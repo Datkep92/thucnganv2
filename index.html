@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Quản lý Hộ Kinh Doanh</title>
+
+  <!-- ✅ CSS -->
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+
+  <!-- ✅ JS thư viện -->
+  <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+</head>
+<body>
+
+  <!-- ==== HEADER ==== -->
+  <header>
+    <button onclick="toggleSidebarMobile()" class="mobile-only">☰ HKD</button>
+    <button onclick="document.getElementById('zipFile').click()">📁 Chọn file</button>
+    <input type="file" id="zipFile" accept=".zip" multiple style="display:none;">
+    <button onclick="document.getElementById('misaExcelFile').click()" title="Import Excel MISA để đồng bộ mã hàng">📥 Import MISA</button>
+    <input type="file" id="misaExcelFile" accept=".xlsx,.xls" style="display:none;">
+    <button onclick="clearAll()">🗑️ Xoá toàn bộ</button>
+  <input type="file" id="zipFileOutput" accept=".zip" multiple style="display:none;">
+  </header>
+
+  <!-- ==== PROGRESS BAR ==== -->
+  <div id="progressContainer" style="display:none; margin:8px 16px; background:#e9ecef; border-radius:8px; overflow:hidden; position:relative; height:28px; box-shadow:inset 0 1px 3px rgba(0,0,0,0.1);">
+    <div id="progressBar" style="width:0%; height:100%; background:linear-gradient(90deg, #4caf50, #8bc34a); border-radius:8px; transition:width 0.3s ease;"></div>
+    <span id="progressText" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:0.85em; font-weight:bold; color:#333; text-shadow:0 0 3px #fff;">0%</span>
+  </div>
+
+  <!-- ==== BODY CONTENT ==== -->
+  <div class="container">
+    <!-- === SIDEBAR === -->
+    <div class="sidebar hide-on-mobile" id="hkdList">
+      <h3>📋 Danh sách HKD</h3>
+      <ul id="businessList"></ul>
+    </div>
+
+    <!-- === MAIN === -->
+    <div class="main">
+      <div id="mainContent">
+        <div id="hkdInfo">📌 Chưa chọn HKD nào</div>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- ==== SCRIPT CHẠY SAU ==== -->
+  <script>
+  // Khi chọn file ZIP đầu vào
+  document.getElementById('zipFile').addEventListener('change', async function (e) {
+    const files = Array.from(e.target.files);
+    if (files.length > 0) await handleFiles(files);
+  });
+
+  // Khi chọn file Excel MISA
+  document.getElementById('misaExcelFile').addEventListener('change', async function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (typeof importMisaExcel === 'function') {
+      await importMisaExcel(file);
+    } else {
+      alert('Hàm importMisaExcel chưa sẵn sàng. Vui lòng kiểm tra file inventory.js');
+    }
+    // Reset input để có thể chọn lại file cùng tên
+    this.value = '';
+  });
+
+    // Đóng sidebar trên mobile khi chọn HKD
+    document.addEventListener('click', function(e) {
+      if (e.target.closest('#businessList li')) {
+        if (window.innerWidth < 768) {
+          toggleSidebarMobile(true);
+        }
+      }
+    });
+
+    function toggleSidebarMobile(forceClose = false) {
+      const sidebar = document.getElementById('hkdList');
+      if (forceClose || sidebar.classList.contains('show-on-mobile')) {
+        sidebar.classList.remove('show-on-mobile');
+        sidebar.classList.add('hide-on-mobile');
+      } else {
+        sidebar.classList.remove('hide-on-mobile');
+        sidebar.classList.add('show-on-mobile');
+      }
+    }
+
+    // Kích hoạt compact mode nếu mobile
+    if (window.innerWidth < 768) {
+      document.body.classList.add('compact-mode');
+    }
+
+    // ✅ Hàm lưu token GitHub
+    function saveGitHubToken() {
+      const token = document.getElementById('tokenInput').value;
+      localStorage.setItem('github_token', token);
+      Toastify({
+        text: "✅ Đã lưu token!",
+        duration: 2000,
+        gravity: "top",
+        position: "center",
+        style: { background: "#28a745" }
+      }).showToast();
+    }
+  </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <!-- ==== JS MODULES ==== -->
+  <script src="db.js"></script>
+  <script src="state.js"></script>
+  <script src="dom-utils.js"></script>
+  <script src="parseXmlInvoice.js"></script>
+  <script src="inventory.js"></script>
+  <script src="export.js"></script>
+  <script src="commonUtils.js"></script>
+  <script src="exportExcel.js"></script>
+  <!-- ==== TÁCH TỪ MAIN.JS ==== -->
+  <script src="hkd-list.js"></script>
+  <script src="invoice-detail.js"></script>
+  <script src="merge-hkd.js"></script>
+  <script src="main.js"></script>
+
+</body>
+</html>
