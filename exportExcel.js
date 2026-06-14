@@ -39,6 +39,25 @@ function getProductCode(name, unit) {
   return _productCodeMap[key];
 }
 
+/**
+ * Đăng ký mã sản phẩm có sẵn (từ productCode thực tế) vào map để đồng bộ
+ * Nếu key name|unit đã tồn tại trong map, giữ nguyên mã cũ
+ * Nếu chưa, gán mã từ productCode thực tế
+ */
+function registerExistingProductCode(name, unit, productCode) {
+  if (!productCode) return;
+  const key = (name || '').trim().toLowerCase() + '|' + (unit || '').trim().toLowerCase();
+  if (!_productCodeMap[key]) {
+    _productCodeMap[key] = productCode;
+    // Cập nhật counter nếu mã mới có số > counter hiện tại
+    const match = productCode.match(/^HH(\d+)$/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > _productCodeCounter) _productCodeCounter = num;
+    }
+  }
+}
+
 // ============================================================
 // ĐỊNH DẠNG EXCEL CHUYÊN NGHIỆP
 // ============================================================
@@ -300,9 +319,24 @@ function exportMaterialsExcel(taxCode) {
     return;
   }
 
-  // Gán mã HHxxx cho từng item
+  // Đăng ký mã sản phẩm thực tế (đã đồng bộ MISA hoặc đã sửa) vào map trước
   allItems.forEach(item => {
-    item._code = getProductCode(item.name, item.unit);
+    if (item.productCode) {
+      registerExistingProductCode(item.name, item.unit, item.productCode);
+    }
+  });
+
+  // Gán mã cho từng item: ưu tiên productCode thực tế, fallback sinh HHxxx mới
+  allItems.forEach(item => {
+    if (item.productCode) {
+      // Dùng mã thực tế (đã đồng bộ MISA hoặc đã sửa tay)
+      item._code = item.productCode;
+      // Đảm bảo map đã có mã này
+      registerExistingProductCode(item.name, item.unit, item.productCode);
+    } else {
+      // Sinh mã mới nếu chưa có
+      item._code = getProductCode(item.name, item.unit);
+    }
   });
 
   const ws = XLSX.utils.aoa_to_sheet(buildMaterialData(allItems));
@@ -404,15 +438,17 @@ function exportPurchaseExcel(taxCode) {
 
   // Reset mã hàng để đồng bộ với file VTHH
   resetProductCodeMap();
-  // Pre-populate map từ tonkhoMain để đồng bộ mã
-  (hkd.tonkhoMain || []).forEach(item => {
-    getProductCode(item.name, item.unit);
-  });
-  (hkd.tonkhoKM || []).forEach(item => {
-    getProductCode(item.name, item.unit);
-  });
-  (hkd.tonkhoCK || []).forEach(item => {
-    getProductCode(item.name, item.unit);
+  // Pre-populate map từ tonkho để đồng bộ mã - ưu tiên productCode thực tế
+  [hkd.tonkhoMain, hkd.tonkhoKM, hkd.tonkhoCK].forEach(arr => {
+    (arr || []).forEach(item => {
+      if (item.productCode) {
+        // Dùng mã thực tế (đã đồng bộ MISA hoặc đã sửa)
+        registerExistingProductCode(item.name, item.unit, item.productCode);
+      } else {
+        // Sinh mã mới nếu chưa có
+        getProductCode(item.name, item.unit);
+      }
+    });
   });
 
   const ws = XLSX.utils.aoa_to_sheet(buildPurchaseData(invoices));

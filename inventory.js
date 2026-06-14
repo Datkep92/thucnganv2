@@ -641,12 +641,13 @@ function exportAllInventoryToExcel(taxCode) {
   ];
 
   const rows = [
-    ['Loại', 'Tên hàng hóa', 'ĐVT', 'Số lượng', 'Đơn giá', 'Thành tiền', 'Thuế suất']
+    ['Loại', 'Mã SP', 'Tên hàng hóa', 'ĐVT', 'Số lượng', 'Đơn giá', 'Thành tiền', 'Thuế suất']
   ];
 
   all.forEach(item => {
     rows.push([
       item.loai,
+      item.productCode || '',
       item.name,
       item.unit,
       item.quantity,
