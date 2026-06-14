@@ -1389,6 +1389,19 @@ const companyInfo = `
   /* ---------- 1. TỒN KHO ---------- */
   const totalInvQty = (hkd.tonkhoMain || []).reduce((s, i) => s + parseFloat(i.quantity || 0), 0);
   const totalInvValue = (hkd.tonkhoMain || []).reduce((s, i) => s + (parseFloat(i.quantity || 0) * parseFloat(i.price || 0)), 0);
+  const totalUniqueProducts = (hkd.tonkhoMain || []).filter(i => parseFloat(i.quantity) > 0).length;
+
+  // Tính tổng CK và Thuế từ tonkhoMain + tonkhoCK
+  const tongHang = (hkd.tonkhoMain || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const tongCK = (hkd.tonkhoCK || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const tongSauCK = tongHang - Math.abs(tongCK);
+  const tongThue = (hkd.tonkhoMain || []).reduce((s, i) => {
+    const a = parseFloat(i.amount) || 0;
+    const t = parseFloat(i.taxRate) || 0;
+    return s + a * (t / 100);
+  }, 0);
+  const tyLe = tongHang > 0 ? tongSauCK / tongHang : 0;
+  const thueSauCK = tongThue * tyLe;
 
   /* ---------- 2. XUẤT HÀNG ---------- */
   let totalExpQty = 0;
@@ -1419,20 +1432,24 @@ const companyInfo = `
     <div id="${taxCode}-tonkho" class="tab-content active hkd-section">
       <div class="summary-grid" style="margin: 20px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
         <div class="summary-box">
-          <div class="label">Tổng SL tồn kho</div>
+          <div class="label">📦 Tổng SL tồn kho</div>
           <div class="value" id="inv-qty" style="font-weight:bold; color:#1976d2;">${formatQuantity(totalInvQty)}</div>
         </div>
         <div class="summary-box">
-          <div class="label">Tổng tiền tồn kho (thực tế)</div>
+          <div class="label">📊 Số SP tồn kho</div>
+          <div class="value" id="inv-product-count" style="font-weight:bold; color:#6a1b9a;">${totalUniqueProducts}</div>
+        </div>
+        <div class="summary-box">
+          <div class="label">💰 Tiền tồn kho (thực tế)</div>
           <div class="value" id="inv-value" style="color:#2e7d32; font-weight:bold;">${window.formatCurrencyVN(totalInvValue)}</div>
         </div>
         <div class="summary-box">
-          <div class="label">Tổng tiền kho (mặc định)</div>
-          <div class="value" id="inv-default-value" style="color:#666;">0 ₫</div>
+          <div class="label">🔻 Tổng CK</div>
+          <div class="value" id="inv-total-ck" style="color:#d32f2f; font-weight:bold;">${Math.abs(tongCK).toLocaleString()} đ</div>
         </div>
         <div class="summary-box">
-          <div class="label">Tổng tiền đã giảm</div>
-          <div class="value" id="inv-reduced-value" style="color:#d32f2f; font-weight:bold;">0 ₫</div>
+          <div class="label">💸 Tổng Thuế</div>
+          <div class="value" id="inv-total-tax" style="color:#e65100; font-weight:bold;">${Math.round(thueSauCK).toLocaleString()} đ</div>
         </div>
       </div>
 
@@ -1442,7 +1459,25 @@ const companyInfo = `
           <button onclick="switchTonKhoTab('km')">Khuyến mại</button>
           <button onclick="switchTonKhoTab('ck')">Chiết khấu</button>
         </div>
-        <button onclick="exportAllInventoryToExcel('${taxCode}')">Xuất Excel</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="exportAllInventoryToExcel('${taxCode}')">Xuất Excel</button>
+          <button onclick="exportSuppliersExcel('${taxCode}')"
+                  style="background:#17a2b8;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
+            🏭 Danh mục NCC
+          </button>
+          <button onclick="exportMaterialsExcel('${taxCode}')"
+                  style="background:#6f42c1;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
+            📦 Danh mục VTHH
+          </button>
+          <button onclick="exportPurchaseExcel('${taxCode}')"
+                  style="background:#fd7e14;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
+            📄 Mua hàng trong nước
+          </button>
+          <button onclick="exportAllExcel('${taxCode}')"
+                  style="background:#dc3545;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;font-weight:bold;">
+            📤 Xuất tất cả (3 file)
+          </button>
+        </div>
       </div>
 
       <div style="margin-top:20px">
@@ -1477,29 +1512,6 @@ const companyInfo = `
           📥 Tải file Excel xuất hàng
         </button>
         <span style="margin-left: 10px; color: #666;">Định dạng: .xlsx, .xls</span>
-      </div>
-
-      <!-- NÚT XUẤT EXCEL MẪU AMIS -->
-      <div style="margin-bottom: 15px; padding: 12px; background: #f0f7ff; border: 1px solid #b3d4fc; border-radius: 8px;">
-        <div style="font-weight: bold; margin-bottom: 8px; color: #0056b3;">📤 Xuất Excel mẫu AMIS Accounting:</div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button onclick="exportSuppliersExcel('${taxCode}')"
-                  style="background: #17a2b8; color: white; border: none; padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 0.9em;">
-            🏭 Danh mục NCC
-          </button>
-          <button onclick="exportMaterialsExcel('${taxCode}')"
-                  style="background: #6f42c1; color: white; border: none; padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 0.9em;">
-            📦 Danh mục VTHH
-          </button>
-          <button onclick="exportPurchaseExcel('${taxCode}')"
-                  style="background: #fd7e14; color: white; border: none; padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 0.9em;">
-            📄 Mua hàng trong nước
-          </button>
-          <button onclick="exportAllExcel('${taxCode}')"
-                  style="background: #dc3545; color: white; border: none; padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 0.9em; font-weight: bold;">
-            📤 Xuất tất cả (3 file)
-          </button>
-        </div>
       </div>
 
       <div id="${taxCode}-exportTablePlaceholder"></div>
@@ -1864,47 +1876,20 @@ function updateMainTotalDisplay(taxCode) {
     currentValue += qty * price;
   });
 
-  // === 2. TỒN KHO MẶC ĐỊNH (BAN ĐẦU) ===
-  let defaultQty = 0;
-  let defaultValue = 0;
+  // === 2. SỐ SP TỒN KHO (SL > 0) ===
+  const totalUniqueProducts = (hkd.tonkhoMain || []).filter(i => parseFloat(i.quantity) > 0).length;
 
-  if (hkd.tonkhoMainDefault) {
-    defaultQty = parseFloat(hkd.tonkhoMainDefault.totalQty) || 0;
-    defaultValue = parseFloat(hkd.tonkhoMainDefault.totalValue) || 0;
-  } else {
-    // Tính từ tồn hiện tại + tất cả lượng đã xuất (theo lịch sử khớp)
-    (hkd.tonkhoMain || []).forEach(stock => {
-      const qty = parseFloat(stock.quantity) || 0;
-      const price = parseFloat(stock.price) || 0;
-
-      let matchedOut = 0;
-      (hkd.exports || []).forEach(exp => {
-        (exp.items || []).forEach(item => {
-          (item.matchedHistory || []).forEach(m => {
-            // So sánh stockIdx hoặc dùng fallback nếu chưa có
-            if (m.stockIdx === stock.stockIdx || 
-                m.stockIdx === stock.index || 
-                (m.name && m.name === stock.name)) {
-              matchedOut += parseFloat(m.qty || 0);
-            }
-          });
-        });
-      });
-
-      defaultQty += qty + matchedOut;
-      defaultValue += (qty + matchedOut) * price;
-    });
-
-    // Lưu lại để lần sau dùng nhanh
-    hkd.tonkhoMainDefault = {
-      totalQty: defaultQty.toFixed(6),
-      totalValue: defaultValue.toFixed(2)
-    };
-  }
-
-  // === 3. ĐÃ GIẢM ===
-  const reducedQty = defaultQty - currentQty;
-  const reducedValue = defaultValue - currentValue;
+  // === 3. TỔNG CK VÀ THUẾ ===
+  const tongHang = (hkd.tonkhoMain || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const tongCK = (hkd.tonkhoCK || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const tongSauCK = tongHang - Math.abs(tongCK);
+  const tongThue = (hkd.tonkhoMain || []).reduce((s, i) => {
+    const a = parseFloat(i.amount) || 0;
+    const t = parseFloat(i.taxRate) || 0;
+    return s + a * (t / 100);
+  }, 0);
+  const tyLe = tongHang > 0 ? tongSauCK / tongHang : 0;
+  const thueSauCK = tongThue * tyLe;
 
   // === 4. XUẤT HÀNG ===
   let totalExpQty = 0;
@@ -1929,23 +1914,15 @@ function updateMainTotalDisplay(taxCode) {
   if (currentTaxCode === taxCode) {
     const el = (id) => document.getElementById(id);
     if (el('inv-qty')) el('inv-qty').textContent = formatQuantity(currentQty);
+    if (el('inv-product-count')) el('inv-product-count').textContent = totalUniqueProducts;
     if (el('inv-value')) el('inv-value').textContent = window.formatCurrencyVN(currentValue);
-    if (el('inv-default-value')) el('inv-default-value').textContent = window.formatCurrencyVN(defaultValue);
-    if (el('inv-reduced-value')) el('inv-reduced-value').textContent = window.formatCurrencyVN(reducedValue);
+    if (el('inv-total-ck')) el('inv-total-ck').textContent = Math.abs(tongCK).toLocaleString() + ' đ';
+    if (el('inv-total-tax')) el('inv-total-tax').textContent = Math.round(thueSauCK).toLocaleString() + ' đ';
 
     if (el('exp-items')) el('exp-items').textContent = formatQuantity(totalExpQty);
     if (el('exp-revenue-sell')) el('exp-revenue-sell').textContent = window.formatCurrencyVN(totalSellValue);
     if (el('exp-revenue-cost')) el('exp-revenue-cost').textContent = window.formatCurrencyVN(totalCostValue);
   }
-
-  console.log('BÁO CÁO TỒN KHO:', {
-    'SL hiện tại': currentQty,
-    'Tiền hiện tại': currentValue,
-    'Tiền mặc định': defaultValue,
-    'Đã giảm (tiền)': reducedValue,
-    'Doanh thu': totalSellValue,
-    'Giá vốn': totalCostValue
-  });
 }
 function validateCalculations(taxCode) {
   console.log('=== KIỂM TRA TÍNH TOÁN ===', taxCode);

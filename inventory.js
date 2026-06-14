@@ -1,3 +1,165 @@
+// ============================
+// CHUẨN HÓA ĐVT (ĐƠN VỊ TÍNH)
+// ============================
+// Bỏ dấu tiếng Việt, viết thường để tạo key so sánh
+function removeVietnameseTones(str) {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D');
+}
+
+// Chuẩn hóa ĐVT: trim, viết thường, bỏ dấu -> tạo key để gom nhóm
+function normalizeUnit(unit) {
+  return removeVietnameseTones(unit.trim().toLowerCase());
+}
+
+// So sánh 2 cách viết ĐVT, chọn cách "đẹp hơn" (viết hoa chữ cái đầu)
+function isBetterUnit(candidate, current) {
+  const a = candidate.trim();
+  const b = current.trim();
+  // Ưu tiên viết hoa chữ cái đầu
+  const aCapitalized = a.charAt(0).toUpperCase() + a.slice(1).toLowerCase();
+  const bCapitalized = b.charAt(0).toUpperCase() + b.slice(1).toLowerCase();
+  if (a === aCapitalized && b !== bCapitalized) return true;
+  if (b === bCapitalized && a !== aCapitalized) return false;
+  // Nếu cùng mức độ, ưu tiên ngắn hơn
+  return a.length < b.length;
+}
+
+// ============================
+// PHÂN TRANG (PAGINATION) CHO BẢNG TỒN KHO
+// ============================
+const TONKHO_PAGE_SIZE = 100;
+let _tonkhoPage = {}; // { "taxCode|type": currentPage }
+let _tonkhoShowAll = {}; // { "taxCode|type": true/false } — chế độ hiển thị tất cả
+
+function getTonKhoPage(taxCode, type) {
+  const key = taxCode + '|' + type;
+  return _tonkhoPage[key] || 0;
+}
+
+function setTonKhoPage(taxCode, type, page) {
+  const key = taxCode + '|' + type;
+  _tonkhoPage[key] = page;
+}
+
+function isTonKhoShowAll(taxCode, type) {
+  const key = taxCode + '|' + type;
+  return _tonkhoShowAll[key] || false;
+}
+
+function setTonKhoShowAll(taxCode, type, showAll) {
+  const key = taxCode + '|' + type;
+  _tonkhoShowAll[key] = showAll;
+}
+
+function renderPagination(totalItems, currentPage, taxCode, type, containerId) {
+  const totalPages = Math.ceil(totalItems / TONKHO_PAGE_SIZE);
+  const showAll = isTonKhoShowAll(taxCode, type);
+  if (totalPages <= 1 && !showAll) return '';
+  
+  let html = `<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin:10px 0;padding:8px;background:#f5f5f5;border-radius:6px;">`;
+  html += `<span style="font-size:0.85em;color:#666;">Tổng: ${totalItems} dòng</span>`;
+  
+  if (!showAll) {
+    // Nút Prev
+    html += `<button onclick="changeTonKhoPage('${taxCode}','${type}',${currentPage - 1})" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:${currentPage > 0 ? '#fff' : '#eee'};cursor:${currentPage > 0 ? 'pointer' : 'default'};" ${currentPage <= 0 ? 'disabled' : ''}>&#9664; Trước</button>`;
+    
+    // Các nút trang (tối đa 5 nút)
+    const startPage = Math.max(0, currentPage - 2);
+    const endPage = Math.min(totalPages - 1, currentPage + 2);
+    for (let p = startPage; p <= endPage; p++) {
+      const active = p === currentPage;
+      html += `<button onclick="changeTonKhoPage('${taxCode}','${type}',${p})" style="padding:4px 10px;border:1px solid ${active ? '#1976d2' : '#ccc'};border-radius:4px;background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};font-weight:${active ? 'bold' : 'normal'};cursor:pointer;">${p + 1}</button>`;
+    }
+    
+    // Nút Next
+    html += `<button onclick="changeTonKhoPage('${taxCode}','${type}',${currentPage + 1})" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:${currentPage < totalPages - 1 ? '#fff' : '#eee'};cursor:${currentPage < totalPages - 1 ? 'pointer' : 'default'};" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>Sau &#9654;</button>`;
+  }
+  
+  // Nút All / Phân trang
+  html += `<button onclick="toggleTonKhoShowAll('${taxCode}','${type}')" style="padding:4px 12px;border:1px solid ${showAll ? '#1976d2' : '#ccc'};border-radius:4px;background:${showAll ? '#1976d2' : '#fff'};color:${showAll ? '#fff' : '#333'};font-weight:bold;cursor:pointer;">${showAll ? '📄 Phân trang' : '📋 All'}</button>`;
+
+  html += `</div>`;
+  return html;
+}
+
+function changeTonKhoPage(taxCode, type, page) {
+  const key = taxCode + '|' + type;
+  const totalPages = Math.ceil(getTotalItemsForPage(taxCode, type) / TONKHO_PAGE_SIZE);
+  if (page < 0 || page >= totalPages) return;
+  setTonKhoPage(taxCode, type, page);
+  setTonKhoShowAll(taxCode, type, false);
+  renderTonKhoTab(taxCode, type);
+}
+
+function toggleTonKhoShowAll(taxCode, type) {
+  const showAll = !isTonKhoShowAll(taxCode, type);
+  setTonKhoShowAll(taxCode, type, showAll);
+  renderTonKhoTab(taxCode, type);
+}
+
+/**
+ * Đặt lại toàn bộ bộ lọc tồn kho:
+ * - Xóa giá trị tất cả input/select
+ * - Clear flatpickr
+ * - Reset phân trang về trang 0
+ * - Tắt chế độ All
+ * - Render lại bảng
+ */
+function resetTonKhoFilters() {
+  // Xác định taxCode và type từ tab đang hiển thị (giống applyAutoFilter)
+  const taxCode = currentTaxCode;
+  if (!taxCode || !hkdData[taxCode]) return;
+  let type = 'main';
+  ['main', 'km', 'ck'].forEach(t => {
+    const div = document.getElementById(`tonKho-${t}`);
+    if (div && div.style.display !== 'none') type = t;
+  });
+
+  // Clear flatpickr date inputs
+  const fpFrom = document.getElementById('filterFrom')?._flatpickr;
+  const fpTo = document.getElementById('filterTo')?._flatpickr;
+  if (fpFrom) fpFrom.clear();
+  if (fpTo) fpTo.clear();
+
+  // Clear text inputs
+  const numInput = document.getElementById('filterNumber');
+  if (numInput) numInput.value = '';
+  const searchInput = document.getElementById('filterSearch');
+  if (searchInput) searchInput.value = '';
+
+  // Reset dropdowns về giá trị mặc định
+  const selects = ['filterTen', 'filterThueSuat', 'filterDVT', 'filterMatchPct', 'filterSort'];
+  selects.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  // Reset pagination về trang 0
+  setTonKhoPage(taxCode, type, 0);
+  // Tắt chế độ All
+  setTonKhoShowAll(taxCode, type, false);
+
+  // Render lại bảng
+  renderTonKhoTab(taxCode, type);
+}
+window.resetTonKhoFilters = resetTonKhoFilters;
+
+function getTotalItemsForPage(taxCode, type) {
+  if (!hkdData[taxCode]) return 0;
+  const map = { main: 'tonkhoMain', km: 'tonkhoKM', ck: 'tonkhoCK' };
+  const arr = (hkdData[taxCode][map[type]] || []).filter(item => {
+    if (type === 'main') return item.category === 'hang_hoa';
+    if (type === 'km') return item.category === 'KM';
+    if (type === 'ck') return item.category === 'chiet_khau';
+    return true;
+  });
+  return arr.length;
+}
+
 function switchTonKhoTab(tab) {
   if (!currentTaxCode) {
     showToast("Vui lòng chọn một HKD trước", 2000, 'error');
@@ -81,6 +243,9 @@ function renderTonKhoTab(taxCode, type) {
           Xóa ${zeroStockCount} tồn kho = 0
         </button>
       ` : ''}
+      <button id="resetFiltersBtn" style="background: #ff9800; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight:bold;">
+        🔄 Đặt lại
+      </button>
     `;
     const container = document.getElementById(divMap[type]);
     if (container) container.insertAdjacentElement('beforebegin', filterDiv);
@@ -97,13 +262,23 @@ function renderTonKhoTab(taxCode, type) {
 
     // Gán sự kiện real-time cho các input/dropdown
     // Sử dụng applyAutoFilter() không tham số để tự động xác định taxCode và type từ DOM
-    document.getElementById('filterNumber').addEventListener('input', () => applyAutoFilter());
-    document.getElementById('filterSearch').addEventListener('input', () => applyAutoFilter());
+    // Debounce cho input text để tránh render quá nhiều khi gõ
+    let _debounceTimer;
+    document.getElementById('filterNumber').addEventListener('input', () => {
+      clearTimeout(_debounceTimer);
+      _debounceTimer = setTimeout(() => applyAutoFilter(), 300);
+    });
+    document.getElementById('filterSearch').addEventListener('input', () => {
+      clearTimeout(_debounceTimer);
+      _debounceTimer = setTimeout(() => applyAutoFilter(), 300);
+    });
     document.getElementById('filterTen').addEventListener('change', () => applyAutoFilter());
     document.getElementById('filterThueSuat').addEventListener('change', () => applyAutoFilter());
     document.getElementById('filterDVT').addEventListener('change', () => applyAutoFilter());
     document.getElementById('filterMatchPct').addEventListener('change', () => applyAutoFilter());
     document.getElementById('filterSort').addEventListener('change', () => applyAutoFilter());
+    // Nút Đặt lại — xóa toàn bộ filter, reset phân trang, tắt All mode
+    document.getElementById('resetFiltersBtn').addEventListener('click', () => resetTonKhoFilters());
     // Thêm thanh công cụ batch actions (chỉ tạo 1 lần)
     if (!document.getElementById('tonkho-batch-actions')) {
       const batchDiv = document.createElement('div');
@@ -156,10 +331,21 @@ function renderTonKhoTab(taxCode, type) {
     filterThueSuat.value = prevThueSuat;
   }
 
-  // Cập nhật dropdown ĐVT (giữ lại giá trị đã chọn)
+  // Cập nhật dropdown ĐVT (giữ lại giá trị đã chọn) — đã chuẩn hóa để gộp trùng
   const filterDVT = document.getElementById('filterDVT');
   if (filterDVT) {
-    const dvtValues = [...new Set(arr.map(item => (item.unit || '').trim()).filter(Boolean))].sort();
+    // Gom nhóm các ĐVT theo key chuẩn hóa, chọn hiển thị dạng đẹp nhất
+    const unitMap = {};
+    arr.forEach(item => {
+      const raw = (item.unit || '').trim();
+      if (!raw) return;
+      const key = normalizeUnit(raw);
+      // Ưu tiên dạng viết hoa chữ cái đầu (đẹp hơn)
+      if (!unitMap[key] || isBetterUnit(raw, unitMap[key])) {
+        unitMap[key] = raw;
+      }
+    });
+    const dvtValues = Object.keys(unitMap).sort().map(k => unitMap[k]);
     filterDVT.innerHTML = '<option value="">Tất cả</option>' + dvtValues.map(v => `<option value="${v.replace(/'/g, "\\'")}">${v}</option>`).join('');
     filterDVT.value = prevDVT;
   }
@@ -200,37 +386,8 @@ function renderTonKhoTab(taxCode, type) {
   }
 
   const total = arr.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-  const tongHang = hkdData[taxCode].tonkhoMain.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-  const tongCK = hkdData[taxCode].tonkhoCK.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-  const tongSauCK = tongHang - Math.abs(tongCK);
-
-  const tongThue = hkdData[taxCode].tonkhoMain.reduce((s, i) => {
-    const a = parseFloat(i.amount) || 0;
-    const t = parseFloat(i.taxRate) || 0;
-    return s + a * (t / 100);
-  }, 0);
-
-  const tyLe = tongHang > 0 ? tongSauCK / tongHang : 0;
-  const thueSauCK = tongThue * tyLe;
-  const thanhToanSauThue = tongSauCK + thueSauCK;
 
   let html = `
-  <div style="margin-top:15px; font-weight:bold; display:flex; flex-wrap:wrap; gap:20px; align-items:center;">
-    <div> Tổng hàng hóa: ${tongHang.toLocaleString()} đ</div>
-    <div> Tổng KM: ${hkdData[taxCode].tonkhoKM.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0).toLocaleString()} đ</div>
-    <div> Tổng CK: ${tongCK.toLocaleString()} đ</div>
-  </div>`;
-
-  if (type === 'main') {
-    html += `
-    <div style="margin-top:5px; font-weight:bold; color:#333; display:flex; flex-wrap:wrap; gap:15px;">
-      Sau CK: ${tongSauCK.toLocaleString()} đ
-      Thuế: ${Math.round(thueSauCK).toLocaleString()} đ
-      Thanh toán: ${Math.round(thanhToanSauThue).toLocaleString()} đ
-    </div>`;
-  }
-
-  html += `
   <table border="1" cellpadding="6" cellspacing="0" style="margin-top:10px; width:100%; background:#fff;">
     <thead>
       <tr>
@@ -242,7 +399,14 @@ function renderTonKhoTab(taxCode, type) {
     </thead>
     <tbody>`;
 
-  arr.forEach((item, i) => {
+  // Phân trang: chỉ render các item trong trang hiện tại (hoặc tất cả nếu bật All)
+  const showAll = isTonKhoShowAll(taxCode, type);
+  const currentPage = getTonKhoPage(taxCode, type);
+  const startIdx = showAll ? 0 : currentPage * TONKHO_PAGE_SIZE;
+  const pageItems = showAll ? arr : arr.slice(startIdx, startIdx + TONKHO_PAGE_SIZE);
+
+  pageItems.forEach((item, idx) => {
+    const i = startIdx + idx; // index thật trong mảng gốc
     const isEditing = (tonkhoEditing.index === i && tonkhoEditing.type === type && tonkhoEditing.taxCode === taxCode);
     const quantity = parseFloat(item.quantity) || 0;
     const price = parseFloat(item.price) || 0;
@@ -326,6 +490,9 @@ function renderTonKhoTab(taxCode, type) {
   });
 
   html += `</tbody></table>`;
+
+  // Phân trang
+  html += renderPagination(arr.length, currentPage, taxCode, type, divMap[type]);
 
   if (type === 'ck') {
     html += `<div style="margin-top:10px; font-weight:bold; color:#b00;">
@@ -412,33 +579,7 @@ function renderFilteredTonKhoTable(taxCode, type, filtered) {
   // Mảng gốc để tra cứu index thật (vì filtered là subset, index trong filtered khác với index trong mảng gốc)
   const fullArr = hkdData[taxCode]?.[map[type]] || [];
 
-  // ===== Tính toán tổng =====
-  const tongHang = filtered.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-  const tongKM = (hkdData[taxCode].tonkhoKM || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-  const tongCK = (hkdData[taxCode].tonkhoCK || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-
-  const tongSauCK = tongHang - Math.abs(tongCK);
-  const tongThue = filtered.reduce((s, i) => {
-    const a = parseFloat(i.amount) || 0;
-    const t = parseFloat(i.taxRate) || 0;
-    return s + a * (t / 100);
-  }, 0);
-
-  const thueSauCK = tongThue * (tongSauCK / (tongHang || 1));
-  const thanhToanSauThue = tongSauCK + thueSauCK;
-
-  // ====== Hiển thị tổng hàng ngang ======
   let html = `
-  <div style="margin:10px 0; font-weight:bold; display:flex; flex-wrap:wrap; gap:20px; align-items:center; background:#f9f9f9; padding:8px; border-radius:6px;">
-    <div>💰 Tổng hàng hóa: ${tongHang.toLocaleString()} đ</div>
-    <div>🎁 Tổng KM: ${tongKM.toLocaleString()} đ</div>
-    <div>🔻 Tổng CK: ${tongCK.toLocaleString()} đ</div>
-    <div>💡 Sau CK: ${tongSauCK.toLocaleString()} đ</div>
-    <div>💸 Thuế: ${Math.round(thueSauCK).toLocaleString()} đ</div>
-    <div>🧾 Thanh toán: ${Math.round(thanhToanSauThue).toLocaleString()} đ</div>
-  </div>`;
-
-  html += `
   <table border="1" cellpadding="6" cellspacing="0" style="margin-top:5px; width:100%; background:#fff;">
     <thead>
       <tr>
@@ -450,7 +591,14 @@ function renderFilteredTonKhoTable(taxCode, type, filtered) {
     </thead>
     <tbody>`;
 
-  filtered.forEach((item, i) => {
+  // Phân trang cho filtered (hoặc tất cả nếu bật All)
+  const showAll = isTonKhoShowAll(taxCode, type);
+  const currentPage = getTonKhoPage(taxCode, type);
+  const startIdx = showAll ? 0 : currentPage * TONKHO_PAGE_SIZE;
+  const pageItems = showAll ? filtered : filtered.slice(startIdx, startIdx + TONKHO_PAGE_SIZE);
+
+  pageItems.forEach((item, idx) => {
+    const i = startIdx + idx; // index trong filtered (để tính STT)
     // Tìm index thật trong mảng gốc (vì filtered là subset, i là index trong filtered không phải trong fullArr)
     const realIndex = fullArr.indexOf(item);
     const isEditing = (tonkhoEditing.index === realIndex && tonkhoEditing.type === type && tonkhoEditing.taxCode === taxCode);
@@ -527,6 +675,9 @@ function renderFilteredTonKhoTable(taxCode, type, filtered) {
 
   html += `</tbody></table>`;
 
+  // Phân trang cho filtered
+  html += renderPagination(filtered.length, currentPage, taxCode, type, divMap[type]);
+
   // Hiển thị trong khung
   const container = document.getElementById(divMap[type]);
   if (container) container.innerHTML = html;
@@ -551,14 +702,16 @@ function moveTonKhoItemPrompt(taxCode, fromType, index) {
 function updateMainTotalDisplay(taxCode) {
   if (!hkdData[taxCode]) return;
   
-  const tongHang = (hkdData[taxCode].tonkhoMain || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-  const tongCK = (hkdData[taxCode].tonkhoCK || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  // Hàm này chỉ cập nhật span total-tonkho-main (cho tab title)
+  // Các cột summary-grid được cập nhật bởi hàm cùng tên trong main.js
+  const main = hkdData[taxCode].tonkhoMain || [];
+  const ck = hkdData[taxCode].tonkhoCK || [];
+  const tongHang = main.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const tongCK = ck.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
   
-  const tongThucTe = tongHang + tongCK;
-
   const totalSpan = document.getElementById("total-tonkho-main");
   if (totalSpan) {
-    totalSpan.innerText = tongThucTe.toLocaleString() + ' đ';
+    totalSpan.innerText = (tongHang + tongCK).toLocaleString() + ' đ';
   }
 }
 
@@ -771,8 +924,12 @@ function createTonKhoItem(taxCode, type) {
   renderHKDTab(taxCode);
 }
 // Thêm hàm này để bổ sung mã sản phẩm cho các sản phẩm hiện có
+// Dùng cache _codesInitialized để chỉ chạy 1 lần cho mỗi HKD (tránh lag khi render lại)
 function addMissingProductCodes(taxCode) {
   if (!hkdData[taxCode]) return;
+  
+  // Nếu đã khởi tạo mã cho HKD này rồi thì bỏ qua (chỉ chạy 1 lần)
+  if (hkdData[taxCode]._codesInitialized) return;
 
   // Reset counter để quét mã HH hiện có
   resetLocalProductMap();
@@ -791,6 +948,9 @@ function addMissingProductCodes(taxCode) {
   
   // Tự động gộp các item trùng tên + ĐVT + mã SP
   deduplicateTonKho(taxCode);
+  
+  // Đánh dấu đã khởi tạo để lần sau không chạy lại
+  hkdData[taxCode]._codesInitialized = true;
   
   saveDataToLocalStorage();
 }
@@ -832,6 +992,11 @@ function applyAutoFilter() {
   const filterMatchPct = document.getElementById('filterMatchPct')?.value || '';
   const filterSort = document.getElementById('filterSort')?.value || '';
 
+  // Hàm chuẩn hóa để so sánh: bỏ dấu, viết thường, trim, xóa khoảng trắng thừa
+  function normalizeForCompare(str) {
+    return removeVietnameseTones(str.trim().toLowerCase()).replace(/\s+/g, ' ');
+  }
+
   let filtered = arr.filter(item => {
     // Lọc ngày
     const date = item.invoiceDate || '';
@@ -845,19 +1010,20 @@ function applyAutoFilter() {
     }
     const numberMatch = !filterNumber || invNumber.includes(filterNumber);
 
-    // Lọc tìm kiếm theo tên hoặc mã hàng
+    // Lọc tìm kiếm theo tên hoặc mã hàng (đã chuẩn hóa bỏ dấu)
+    const searchNorm = normalizeForCompare(filterSearch);
     const searchMatch = !filterSearch ||
-      ((item.name || '').toLowerCase().includes(filterSearch.toLowerCase()) ||
-       (item.productCode || '').toLowerCase().includes(filterSearch.toLowerCase()));
+      normalizeForCompare(item.name || '').includes(searchNorm) ||
+      normalizeForCompare(item.productCode || '').includes(searchNorm);
 
-    // Lọc tên
-    const tenMatch = !filterTen || (item.name || '').trim() === filterTen;
+    // Lọc tên (đã chuẩn hóa bỏ dấu)
+    const tenMatch = !filterTen || normalizeForCompare(item.name || '') === normalizeForCompare(filterTen);
 
     // Lọc thuế suất
     const thueMatch = !filterThueSuat || String(item.taxRate) === filterThueSuat;
 
-    // Lọc ĐVT
-    const dvtMatch = !filterDVT || (item.unit || '').trim() === filterDVT;
+    // Lọc ĐVT (đã chuẩn hóa bỏ dấu)
+    const dvtMatch = !filterDVT || normalizeForCompare(item.unit || '') === normalizeForCompare(filterDVT);
 
     // Lọc % khớp mã hàng
     const pct = item._misaMatchPercent;
@@ -881,11 +1047,11 @@ function applyAutoFilter() {
     return dateMatch && numberMatch && searchMatch && tenMatch && thueMatch && dvtMatch && pctMatch;
   });
 
-  // Sắp xếp
+  // Sắp xếp (đã chuẩn hóa bỏ dấu)
   if (filterSort === 'ten-asc') {
-    filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    filtered.sort((a, b) => normalizeForCompare(a.name || '').localeCompare(normalizeForCompare(b.name || '')));
   } else if (filterSort === 'ten-desc') {
-    filtered.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+    filtered.sort((a, b) => normalizeForCompare(b.name || '').localeCompare(normalizeForCompare(a.name || '')));
   }
 
   renderFilteredTonKhoTable(taxCode, type, filtered);
@@ -1194,21 +1360,29 @@ function quickEditProductCode(taxCode, type, index) {
       </div>
 
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        ${hasMisa ? `
         <tr>
-          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;width:130px;">Tên hàng (HT)</td>
-          <td style="padding:8px 12px;border:1px solid #ddd;background:#e3f2fd;font-weight:bold;">${currentName}</td>
+          <td style="padding:8px 12px;font-weight:bold;background:#e8f5e9;border:1px solid #ddd;width:130px;">📌 Tên MISA</td>
+          <td style="padding:8px 12px;border:1px solid #ddd;background:#e8f5e9;font-weight:bold;font-size:1.05em;">${misaName || '(trống)'}</td>
+        </tr>
+        ` : ''}
+        <tr>
+          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;width:130px;">📦 Tên hàng (HT)</td>
+          <td style="padding:8px 12px;border:1px solid #ddd;background:#e3f2fd;font-weight:bold;font-size:1.05em;">${currentName}</td>
         </tr>
         ${hasMisa ? `
         <tr>
-          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">Mã MISA</td>
-          <td style="padding:8px 12px;border:1px solid #ddd;font-family:monospace;font-weight:bold;color:#1565c0;">${misaCode || '(trống)'}</td>
+          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">🔖 Mã MISA</td>
+          <td style="padding:8px 12px;border:1px solid #ddd;font-family:monospace;font-weight:bold;color:#1565c0;font-size:1.05em;">${misaCode || '(trống)'}</td>
         </tr>
+        ` : ''}
         <tr>
-          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">Tên MISA</td>
-          <td style="padding:8px 12px;border:1px solid #ddd;color:#555;">${misaName || '(trống)'}</td>
+          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">🔖 Mã hiện tại (HT)</td>
+          <td style="padding:8px 12px;border:1px solid #ddd;font-family:monospace;font-weight:bold;font-size:1.1em;color:#e65100;">${currentCode || 'N/A'}</td>
         </tr>
+        ${hasMisa ? `
         <tr>
-          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">Tỷ lệ khớp tên</td>
+          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">📊 Tỷ lệ khớp tên</td>
           <td style="padding:8px 12px;border:1px solid #ddd;">
             <span style="display:inline-block;padding:2px 12px;border-radius:10px;background:${matchColor};color:#fff;font-weight:bold;font-size:0.85em;">
               ${matchPct !== undefined && matchPct !== null ? matchPct + '%' : 'Chưa đồng bộ'}
@@ -1216,19 +1390,15 @@ function quickEditProductCode(taxCode, type, index) {
           </td>
         </tr>
         <tr>
-          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">Trạng thái mã</td>
+          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">⚡ Trạng thái mã</td>
           <td style="padding:8px 12px;border:1px solid #ddd;">${codeMatchHtml}</td>
         </tr>
         ` : `
         <tr>
-          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">Trạng thái</td>
+          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">⚡ Trạng thái</td>
           <td style="padding:8px 12px;border:1px solid #ddd;color:#999;font-style:italic;">Chưa có dữ liệu đồng bộ MISA</td>
         </tr>
         `}
-        <tr>
-          <td style="padding:8px 12px;font-weight:bold;background:#f5f5f5;border:1px solid #ddd;">Mã hiện tại (HT)</td>
-          <td style="padding:8px 12px;border:1px solid #ddd;font-family:monospace;font-weight:bold;font-size:1.1em;color:#e65100;">${currentCode || 'N/A'}</td>
-        </tr>
       </table>
 
       <div style="margin-bottom:12px;">
