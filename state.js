@@ -10,18 +10,16 @@ let tonkhoEditing = { taxCode: '', type: '', index: -1 };
 let exportInventoryData = [];
 let logHistory = [];
 let undoStack = [];
-function ensureHkdData(taxCode) {
-  if (!hkdData[taxCode]) {
-    hkdData[taxCode] = {
-      name: taxCode,
-      tonkhoMain: [], // Đảm bảo tonkhoMain luôn là mảng
-      tonkhoCK: [],
-      invoices: [],
-      exports: [],
-      customers: []
-    };
-  }
-  return hkdData[taxCode];
+// ensureHkdData được định nghĩa trong main.js (có thêm hkdOrder.push)
+// Hàm này chỉ giữ lại để tương thích ngược, nhưng không ghi đè
+// Đảm bảo các trường mới tồn tại (cho dữ liệu cũ) - gọi sau khi ensureHkdData
+function migrateHkdData(taxCode) {
+  const hkd = hkdData[taxCode];
+  if (!hkd) return;
+  if (!hkd.tonkhoKM) hkd.tonkhoKM = [];
+  if (!hkd.xuatkhoMain) hkd.xuatkhoMain = [];
+  if (!hkd.xuatkhoKM) hkd.xuatkhoKM = [];
+  if (!hkd.xuatkhoCK) hkd.xuatkhoCK = [];
 }
 
 function safeParseInt(value, defaultValue = 0) {
@@ -115,6 +113,13 @@ async function loadDataFromLocalStorage() {
         if (lsLogs) logHistory = JSON.parse(lsLogs);
       }
     }
+
+    // Migration dữ liệu cũ: đảm bảo các trường mới tồn tại
+    hkdOrder.forEach(taxCode => {
+      if (typeof migrateHkdData === 'function') {
+        migrateHkdData(taxCode);
+      }
+    });
   } catch (e) {
     console.error("❌ Lỗi đọc dữ liệu:", e);
     showToast("❌ Không thể đọc dữ liệu trước đó", 3000, 'error');
@@ -229,6 +234,13 @@ async function clearAll() {
   localStorage.removeItem('hkdOrder');
   localStorage.removeItem('logHistory');
 
+  // Xóa toàn bộ cache ghép thủ công (tt_cache_* và tt_cache_rev_*)
+  for (var key in localStorage) {
+    if (key.indexOf('tt_cache_') === 0 || key.indexOf('tt_cache_rev_') === 0) {
+      localStorage.removeItem(key);
+    }
+  }
+
   // Xóa IndexedDB
   try {
     await dbClear();
@@ -236,8 +248,19 @@ async function clearAll() {
     console.error('❌ Lỗi xóa IndexedDB:', e);
   }
 
-  document.getElementById("businessList").innerHTML = "";
-  document.getElementById("mainContent").innerHTML = '<div id="hkdInfo">Chưa chọn HKD</div>';
+  // Xóa cả 3 sidebar
+  const bl = document.getElementById("businessList");
+  if (bl) bl.innerHTML = "";
+  const blx = document.getElementById("businessListXuat");
+  if (blx) blx.innerHTML = "";
+  const bltt = document.getElementById("businessListThucTe");
+  if (bltt) bltt.innerHTML = "";
+  // Hiển thị giao diện mặc định với nút import
+  if (typeof window.showEmptyState === 'function') {
+    window.showEmptyState();
+  } else {
+    document.getElementById("mainContent").innerHTML = '<div id="hkdInfo">Chưa chọn HKD</div>';
+  }
   toast("🗑️ Đã xoá toàn bộ dữ liệu", 'success');
 }
 

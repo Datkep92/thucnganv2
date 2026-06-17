@@ -1,532 +1,3 @@
-// === BIẾN TOÀN CỤC CHO DRAG & DROP ===
-// === TÌM KIẾM CẢ 2 CỘT ===
-function filterBothColumns(query) {
-  const q = query.trim().toLowerCase();
-  if (!q) {
-    // Hiện lại tất cả
-    document.querySelectorAll('.match-item').forEach(item => {
-      item.style.display = 'block';
-    });
-    return;
-  }
-
-  document.querySelectorAll('.match-item').forEach(item => {
-    const searchText = item.dataset.search || '';
-    const matches = searchText.includes(q);
-    item.style.display = matches ? 'block' : 'none';
-  });
-}
-function openMatchByDragPopup(taxCode) {
-  currentTaxCode = taxCode;
-  const hkd = hkdData[taxCode];
-  if (!hkd || !hkd.exports?.length) {
-    window.showToast('Không có dữ liệu xuất hàng!', 2500, 'error');
-    return;
-  }
-
-  let exportHtml = '';
-  let stockHtml = '';
-
-  // === XUẤT HÀNG CHƯA KHỚP ===
-  hkd.exports.forEach((exp, expIdx) => {
-    exp.items.forEach((item, itemIdx) => {
-      const remainingQty = parseFloat(item.qty) || 0;
-      if (remainingQty <= 0) return;
-
-      // Giá có thể nằm trong item.price, nếu chưa có thì để 0
-      const price = parseFloat(item.price) || 0;
-
-      // === XUẤT HÀNG ===
-// === XUẤT HÀNG ===
-exportHtml += `
-  <div class="match-item" 
-       draggable="true"
-       data-type="export"
-       data-expidx="${expIdx}"
-       data-itemidx="${itemIdx}"
-       data-price="${price}"
-       data-qty="${remainingQty}"
-       data-search="${(item.name + ' ' + item.unit + ' ' + price).toLowerCase()}"
-       ondragstart="dragStart(event)">
-    <div><b>${item.name}</b></div>
-    <div class="qty" style="color:#d32f2f;">SL: ${formatQuantity(remainingQty)} ${item.unit || ''}</div>
-    <div class="price" style="font-size:0.85em; color:#1565c0;">
-      Giá: ${window.formatCurrencyVN(price)}
-    </div>
-  </div>`;
-    });
-  });
-
-
-  // === TỒN KHO CÒN HÀNG ===
-  (hkd.tonkhoMain || []).forEach((stock, stockIdx) => {
-    const qty = parseFloat(stock.quantity) || 0;
-    if (qty <= 0) return;
-
-    // === TỒN KHO ===
-// === TỒN KHO ===
-stockHtml += `
-  <div class="match-item" 
-       data-type="stock"
-       data-stockidx="${stockIdx}"
-       data-price="${stock.price}"
-       data-qty="${qty}"
-       data-search="${(stock.name + ' ' + stock.unit + ' ' + stock.price).toLowerCase()}"
-       ondragover="allowDrop(event)"
-       ondrop="drop(event)">
-    <div><b>${stock.name}</b></div>
-    <div class="qty">SL: ${formatQuantity(qty)} ${stock.unit || ''}</div>
-    <div style="font-size:0.8em; color:#2e7d32;">Giá: ${window.formatCurrencyVN(stock.price)}</div>
-  </div>`;
-  });
-
-  if (!exportHtml) exportHtml = '<p style="text-align:center; color:#999; padding:20px;">Tất cả đã khớp!</p>';
-  if (!stockHtml) stockHtml = '<p style="text-align:center; color:#999; padding:20px;">Không còn tồn kho!</p>';
-
-     const popupHtml = `
-    <!-- THANH TÌM KIẾM CHUNG -->
-    <div style="padding: 12px 16px; background: #f0f0f0; border-bottom: 1px solid #ddd; display: flex; align-items: center;">
-      <input type="text" 
-             id="globalSearchInput" 
-             placeholder="Tìm kiếm trong cả 2 cột (tên, đơn vị, giá, mã hóa đơn...)" 
-             style="flex:1; padding:10px 12px; font-size:1em; border:1px solid #ccc; border-radius:6px;"
-             onkeyup="filterBothColumns(this.value)">
-      <span style="margin-left:8px; color:#666; font-size:0.9em;">Tìm cả 2 bên</span>
-    </div>
-
-            <!-- THANH LỌC & SẮP XẾP -->
-    <div style="padding:10px; background:#fafafa; border-bottom:1px solid #ddd; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-      <strong style="color:#1976d2;">📑 Bộ lọc:</strong>
-      <button class="filter-btn" onclick="applyFilter('sort','az')">A–Z</button>
-      <button class="filter-btn" onclick="applyFilter('sort','za')">Z–A</button>
-
-      <span style="margin-left:10px; color:#666;">Đơn giá:</span>
-      <button class="filter-btn" onclick="applyFilter('priceDiff','lt10')">&lt;10%</button>
-      <button class="filter-btn" onclick="applyFilter('priceDiff','eq0')">=0%</button>
-      <button class="filter-btn" onclick="applyFilter('priceDiff','lt15')">&lt;15%</button>
-
-      <span style="margin-left:10px; color:#666;">Độ trùng tên:</span>
-      <button class="filter-btn" onclick="applyFilter('fuzzy',0.4)">>40%</button>
-      <button class="filter-btn" onclick="applyFilter('fuzzy',0.5)">>50%</button>
-      <button class="filter-btn" onclick="applyFilter('fuzzy',0.6)">>60%</button>
-      <button class="filter-btn" onclick="applyFilter('fuzzy',0.7)">>70%</button>
-      <button class="filter-btn" onclick="applyFilter('fuzzy',0.8)">>80%</button>
-      <button class="filter-btn" onclick="applyFilter('fuzzy',0.9)">>90%</button>
-      <button class="filter-btn" onclick="applyFilter('fuzzy',1)">100%</button>
-
-      <button class="filter-btn" onclick="resetFilters()" style="margin-left:auto; background:#ccc;">Xóa lọc</button>
-    </div>
-
-   <!-- HÀNG LỌC ĐƠN GIÁ -->
-<div style="padding:8px 10px; background:#fdfdfd; border-bottom:1px solid #eee; display:flex; flex-wrap:wrap; align-items:center; gap:6px;">
-  <span style="color:#444;">Lọc theo đơn giá:</span>
-  <input type="number" id="priceValueInput" 
-         placeholder="Nhập đơn giá (vd: 120000)" 
-         style="width:160px; padding:6px 8px; border:1px solid #ccc; border-radius:4px;"
-         oninput="handlePriceValueInput(this.value)">
-  <span style="font-size:0.9em; color:#888;">(±15%)</span>
-
-  <div style="margin-left:10px; display:flex; flex-wrap:wrap; gap:6px;">
-  <!-- NÚT MỚI -->
-  <button class="filter-btn" onclick="applyFilter('priceTarget',10000)">~10k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',50000)">~50k</button>
-
-  <!-- NÚT CŨ -->
-  <button class="filter-btn" onclick="applyFilter('priceTarget',100000)">~100k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',150000)">~150k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',200000)">~200k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',250000)">~250k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',300000)">~300k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',350000)">~350k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',400000)">~400k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',450000)">~450k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',500000)">~500k</button>
-
-  <!-- NÚT MỚI -->
-  <button class="filter-btn" onclick="applyFilter('priceTarget',700000)">~700k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',1000000)">~1000k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',2000000)">~2000k</button>
-  <button class="filter-btn" onclick="applyFilter('priceTarget',3000000)">~5000k</button>
-</div>
-</div>
-
-
-
-    <!-- KHU VỰC 2 CỘT -->
-    <div class="match-content" 
-         style="display:flex; gap:10px; padding:10px; background:#fff; overflow:hidden; height:70vh;">
-      
-      <!-- CỘT XUẤT HÀNG -->
-      <div class="match-column" 
-           style="flex:1; display:flex; flex-direction:column; border:1px solid #ddd; border-radius:8px; overflow:hidden;">
-        <h4 style="background:#e3f2fd; padding:10px; margin:0; border-bottom:1px solid #ccc;">Xuất Hàng (Chưa Khớp)</h4>
-        <div id="exportItemsList" 
-             class="match-list" 
-             style="flex:1; overflow-y:auto; padding:8px 10px;">
-          ${exportHtml}
-        </div>
-      </div>
-
-      <!-- MŨI TÊN -->
-      <div class="match-arrow" 
-           style="display:flex; align-items:center; justify-content:center; width:40px; font-size:2em; color:#1976d2;">
-        →
-      </div>
-
-      <!-- CỘT TỒN KHO -->
-      <div class="match-column" 
-           style="flex:1; display:flex; flex-direction:column; border:1px solid #ddd; border-radius:8px; overflow:hidden;">
-        <h4 style="background:#e8f5e9; padding:10px; margin:0; border-bottom:1px solid #ccc;">Tồn Kho (Còn Hàng)</h4>
-        <div id="stockItemsList" 
-             class="match-list" 
-             style="flex:1; overflow-y:auto; padding:8px 10px;">
-          ${stockHtml}
-        </div>
-      </div>
-    </div>
-
-    <!-- CHÂN POPUP -->
-    <div class="popup-footer" style="padding:16px; text-align:right; border-top:1px solid #eee; background:#f9f9f9;">
-      <button onclick="confirmAllMatches()" 
-              style="padding:10px 20px; background:#1976d2; color:white; border:none; border-radius:6px; cursor:pointer; margin-left:8px;">
-        Xác Nhận Tất Cả
-      </button>
-      <button onclick="closeMatchPopup()" 
-              style="padding:10px 20px; background:#ccc; color:black; border:none; border-radius:6px; cursor:pointer;">
-        Hủy
-      </button>
-    </div>
-  `;
-
-
-// === TRONG openMatchByDragPopup() ===
-window.showPopup(popupHtml, 'Khớp Tồn Kho - Kéo Thả', () => {
-  currentTaxCode = '';
-});
-
-// ĐỢI DOM ĐƯỢC RENDER HOÀN TẤT → MỚI CACHE
-setTimeout(() => {
-  document.getElementById('globalSearchInput')?.focus();
-
-  // BƯỚC 1: ĐẢM BẢO CẢ 2 CỘT ĐÃ CÓ TRONG DOM
-  const exportItems = document.querySelectorAll('#exportItemsList .match-item');
-  const stockItems = document.querySelectorAll('#stockItemsList .match-item');
-
-  if (exportItems.length === 0 && stockItems.length === 0) {
-    console.warn('Chưa có dữ liệu để cache!');
-    return;
-  }
-
-  // BƯỚC 2: GỌI CACHE
-  cacheOriginalLists();
-
-  // BƯỚC 3: ÁP DỤNG LỌC (nếu có)
-  renderFilteredLists();
-}, 150); // Tăng delay để chắc chắn DOM đã render
-
-  // Focus vào ô tìm kiếm ngay khi mở
-  setTimeout(() => {
-    document.getElementById('globalSearchInput')?.focus();
-  }, 100);
-}
-
-// ====== LỌC & SẮP XẾP CÓ LOGIC THẬT (CÓ TÔ MÀU 2 BẢNG) ======
-let activeFilters = {
-  sort: null,
-  priceDiff: null,   // lt10 / eq0 / lt15  (so sánh cặp sản phẩm)
-  fuzzy: null,       // độ trùng tên
-  priceValue: null,  // số nhập tay (VD: 120000)
-  priceTarget: null  // nút nhanh (VD: 150000) - dùng ±15%
-};
-let originalExportItems = [];
-let originalStockItems = [];
-
-/**
- * Áp dụng bộ lọc thật và render lại popup
- */
-function applyFilter(type, value) {
-  console.log('📎 [FILTER CLICKED]', { type, value });
-  switch (type) {
-    case 'sort':
-      activeFilters.sort = value;
-      break;
-    case 'priceDiff':
-      activeFilters.priceDiff = value;
-      break;
-    case 'fuzzy':
-      activeFilters.fuzzy = value;
-      break;
-    case 'priceTarget':
-      // nếu nhấn lần nữa cùng nút thì toggle off
-      activeFilters.priceTarget = activeFilters.priceTarget === value ? null : value;
-      break;
-  }
-  // khi user bấm nút nhanh thì xóa ô nhập giá để tránh xung đột hiển thị
-  if (type === 'priceTarget') {
-    document.getElementById('priceValueInput') && (document.getElementById('priceValueInput').value = '');
-    activeFilters.priceValue = null;
-  }
-  renderFilteredLists();
-}
-
-// Lọc động theo giá trị nhập (±15%)
-function handlePriceValueInput(val) {
-  if (!val) {
-    activeFilters.priceValue = null;
-  } else {
-    const n = parseFloat(val);
-    activeFilters.priceValue = isNaN(n) ? null : n;
-    // khi người nhập bằng tay, clear priceTarget
-    activeFilters.priceTarget = null;
-  }
-  renderFilteredLists();
-}
-
-
-/**
- * Xóa toàn bộ bộ lọc
- */
-function resetFilters() {
-  activeFilters = { sort: null, unit: false, priceDiff: null, fuzzy: null };
-  renderFilteredLists();
-  window.showToast('Đã xóa tất cả bộ lọc', 1500, 'info');
-}
-
-/**
- * Lấy dữ liệu gốc khi popup mở lần đầu
- */
-function cacheOriginalLists() {
-  // XÓA CACHE CŨ
-  originalExportItems = [];
-  originalStockItems = [];
-
-  // LẤY LẠI TỪ DOM
-  originalExportItems = Array.from(document.querySelectorAll('#exportItemsList .match-item')).map(el => ({
-    html: el.outerHTML,
-    name: el.querySelector('b')?.textContent?.trim() || '',
-    price: parseFloat(el.dataset.price) || 0
-  }));
-
-  originalStockItems = Array.from(document.querySelectorAll('#stockItemsList .match-item')).map(el => ({
-    html: el.outerHTML,
-    name: el.querySelector('b')?.textContent?.trim() || '',
-    price: parseFloat(el.dataset.price) || 0
-  }));
-
-  console.log('CACHE HOÀN TẤT:', {
-    export: originalExportItems.map(i => ({name: i.name, price: i.price})),
-    stock: originalStockItems.map(i => ({name: i.name, price: i.price}))
-  });
-}
-/**
- * Tính độ tương đồng theo "cụm ký tự liên tục" (substring)
- * Giữ nguyên khoảng trắng, không bỏ dấu, không sắp xếp ký tự
- */
-function substringSimilarity(a, b) {
-  if (!a || !b) return 0;
-  a = a.toLowerCase();
-  b = b.toLowerCase();
-
-  let longest = 0;
-  const lenA = a.length;
-  const lenB = b.length;
-  const dp = Array.from({ length: lenA + 1 }, () => Array(lenB + 1).fill(0));
-
-  for (let i = 1; i <= lenA; i++) {
-    for (let j = 1; j <= lenB; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-        if (dp[i][j] > longest) longest = dp[i][j];
-      }
-    }
-  }
-
-  return longest / Math.max(lenA, lenB);
-}
-
-/**
- * Màu nền theo mức độ tương đồng
- */
-function getColorBySim(sim) {
-  if (sim >= 0.4) return '#d9f7be'; // xanh lá nhạt
-  if (sim >= 0.3) return '#fff7a3'; // vàng nhạt
-  if (sim >= 0.2) return '#ffe0b2'; // cam nhạt
-  if (sim >= 0.1) return '#cce5ff'; // xanh dương nhạt
-  return '';
-}
-
-/**
- * Áp dụng các filter và render lại 2 danh sách
- */
-function renderFilteredLists() {
-  if (!originalExportItems.length && !originalStockItems.length) {
-    cacheOriginalLists();
-  }
-
-  let exportFiltered = [...originalExportItems];
-  let stockFiltered = [...originalStockItems];
-
-  const targetPrice = activeFilters.priceValue || activeFilters.priceTarget;
-  if (targetPrice) {
-    const min = targetPrice * 0.85;
-    const max = targetPrice * 1.15;
-    exportFiltered = exportFiltered.filter(e => e.price >= min && e.price <= max);
-    stockFiltered = stockFiltered.filter(s => s.price >= min && s.price <= max);
-  }
-
-  if (activeFilters.fuzzy) {
-    const threshold = activeFilters.fuzzy;
-    const matchedExport = new Set();
-    const matchedStock = new Set();
-
-    for (const exp of exportFiltered) {
-      for (const stock of stockFiltered) {
-        const sim = substringSimilarity(exp.name, stock.name);
-        if (sim >= threshold) {
-          matchedExport.add(exp);
-          matchedStock.add(stock);
-        }
-      }
-    }
-
-    exportFiltered = Array.from(matchedExport);
-    stockFiltered = Array.from(matchedStock);
-  }
-
-  if (activeFilters.priceDiff) {
-    let threshold = 0;
-    if (activeFilters.priceDiff === 'lt10') threshold = 0.1;
-    if (activeFilters.priceDiff === 'eq0') threshold = 0;
-    if (activeFilters.priceDiff === 'lt15') threshold = 0.15;
-
-    const matchedExport = new Set();
-    const matchedStock = new Set();
-
-    for (const exp of exportFiltered) {
-      for (const stock of stockFiltered) {
-        const p1 = exp.price, p2 = stock.price;
-        if (!p1 || !p2) continue;
-        const diff = Math.abs(p1 - p2) / ((p1 + p2) / 2);
-        if (threshold === 0 ? Math.abs(p1 - p2) < 1 : diff <= threshold) {
-          matchedExport.add(exp);
-          matchedStock.add(stock);
-        }
-      }
-    }
-
-    exportFiltered = Array.from(matchedExport);
-    stockFiltered = Array.from(matchedStock);
-  }
-
-  if (activeFilters.sort === 'az') {
-    exportFiltered.sort((a, b) => a.name.localeCompare(b.name));
-    stockFiltered.sort((a, b) => a.name.localeCompare(b.name));
-  } else if (activeFilters.sort === 'za') {
-    exportFiltered.sort((a, b) => b.name.localeCompare(a.name));
-    stockFiltered.sort((a, b) => b.name.localeCompare(a.name));
-  }
-
-  const noData = '<p style="text-align:center;color:#999;">Không có dữ liệu</p>';
-  document.getElementById('exportItemsList').innerHTML = 
-    exportFiltered.length ? exportFiltered.map(i => i.html).join('') : noData;
-  document.getElementById('stockItemsList').innerHTML = 
-    stockFiltered.length ? stockFiltered.map(i => i.html).join('') : noData;
-
-  console.log('LỌC HOÀN TẤT:', { export: exportFiltered.length, stock: stockFiltered.length });
-}
-
-/**
- * Hàm tính độ giống ký tự cơ bản
- */
-function fuzzyScoreSimple(a, b) {
-  if (!a || !b) return 0;
-  a = a.toLowerCase();
-  b = b.toLowerCase();
-  let matches = 0;
-  for (let i = 0; i < a.length; i++) {
-    if (b.includes(a[i])) matches++;
-  }
-  return matches / Math.max(a.length, b.length);
-}
-
-/**
- * Áp dụng các filter và render lại 2 danh sách
- */
-
-
-
-
-// === DRAG & DROP ===
-function dragStart(e) {
-  const el = e.target;
-  el.classList.add('dragging');
-  e.dataTransfer.setData('expIdx', el.dataset.expidx);
-  e.dataTransfer.setData('itemIdx', el.dataset.itemidx);
-}
-
-function allowDrop(e) {
-  e.preventDefault();
-}
-
-function drop(e) {
-  e.preventDefault();
-  const target = e.target.closest('.match-item[data-type="stock"]');
-  if (!target) return;
-
-  const expIdx = e.dataTransfer.getData('expIdx');
-  const itemIdx = e.dataTransfer.getData('itemIdx');
-  const stockIdx = target.dataset.stockidx;
-
-  if (!expIdx || !itemIdx || !stockIdx) return;
-
-  // GỌI HÀM TRỪ TỒN KHO
-  selectStockItem(currentTaxCode, parseInt(expIdx), parseInt(itemIdx), parseInt(stockIdx));
-
-  // ĐÁNH DẤU MÀU ĐỎ
-  const draggedItem = document.querySelector(`[data-expidx="${expIdx}"][data-itemidx="${itemIdx}"]`);
-  if (draggedItem) {
-    draggedItem.classList.add('matched');
-    draggedItem.querySelector('.qty').insertAdjacentHTML('afterend', ' <span style="color:red; font-weight:bold;">(ĐÃ KHỚP)</span>');
-  }
-
-  // CẬP NHẬT TỒN KHO TRONG POPUP
-  updateStockInPopup(currentTaxCode, parseInt(stockIdx));
-
-  // Cập nhật UI chính
-  setTimeout(() => {
-    renderExportInvoiceTable(currentTaxCode);
-    window.renderTonKhoTab(currentTaxCode, 'main');
-  }, 100);
-}
-
-function updateStockInPopup(taxCode, stockIdx) {
-  const stock = hkdData[taxCode]?.tonkhoMain?.[stockIdx];
-  if (!stock) return;
-  const qty = parseFloat(stock.quantity) || 0;
-  const el = document.querySelector(`[data-stockidx="${stockIdx}"] .qty`);
-  if (el) {
-    el.textContent = `SL: ${formatQuantity(qty)} ${stock.unit || ''}`;
-    if (qty <= 0) {
-      el.closest('.match-item').style.opacity = '0.5';
-      el.closest('.match-item').innerHTML += ' <i style="color:#999;">(Hết)</i>';
-    }
-  }
-}
-
-function confirmAllMatches() {
-  window.saveDataToLocalStorage();
-  window.showToast('Đã lưu tất cả thay đổi tồn kho!', 2500, 'success');
-  closeMatchPopup();
-  renderExportInvoiceTable(currentTaxCode);
-  window.renderTonKhoTab(currentTaxCode, 'main');
-  updateMainTotalDisplay(currentTaxCode);
-}
-
-function closeMatchPopup() {
-  const wrapper = document.getElementById('invoicePopupWrapper');
-  if (wrapper) wrapper.remove();
-  currentTaxCode = '';  // <-- chỉ gán, không khai báo
-}
 // main.js
 
 // XÓA dòng khai báo hkdData, hkdOrder, currentTaxCode ở đây
@@ -540,8 +11,11 @@ function ensureHkdData(taxCode) {
       tonkhoMain: [],
       tonkhoCK: [],
       tonkhoKM: [],
+      xuatkhoMain: [],
+      xuatkhoKM: [],
+      xuatkhoCK: [],
       invoices: [],
-      exports: [], // Xuất hàng riêng cho từng HKD
+      exports: [],
       customers: []
     };
     if (!hkdOrder.includes(taxCode)) {
@@ -551,10 +25,27 @@ function ensureHkdData(taxCode) {
   return hkdData[taxCode];
 }
 
-async function handleFiles() {
-  const input = document.getElementById("zipFile");
-  const files = Array.from(input.files);
+// Hàm xử lý khi chọn file ZIP từ nút trong sidebar
+function handleZipFileChange(event) {
+  const files = Array.from(event.target.files);
+  if (files.length > 0) handleFilesFromInput(files);
+  event.target.value = '';
+}
 
+// Hàm xử lý khi chọn file MISA từ nút trong sidebar
+function handleMisaFileChange(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (typeof importMisaExcel === 'function') {
+    importMisaExcel(file);
+  } else {
+    alert('Hàm importMisaExcel chưa sẵn sàng. Vui lòng kiểm tra file inventory.js');
+  }
+  event.target.value = '';
+}
+
+// Hàm xử lý files từ input (dùng chung cho cả event listener cũ và mới)
+async function handleFilesFromInput(files) {
   // Hiển thị progress bar
   if (typeof showProgress === 'function') {
     showProgress(0, `Bắt đầu xử lý ${files.length} file ZIP...`);
@@ -679,8 +170,128 @@ async function handleFiles() {
   window.showToast('Đã xử lý xong tất cả file hóa đơn', 2000, 'success');
 }
 
-// Hàm xử lý file Excel xuất hàng - LƯU THEO HKD
+// ============================================================
+// XỬ LÝ FILE ZIP XUẤT KHO (dùng sellerInfo.taxCode thay vì buyerInfo.taxCode)
+// ============================================================
+async function handleXuatKhoFileChange(event) {
+  const files = Array.from(event.target.files);
+  if (files.length === 0) return;
+  event.target.value = '';
 
+  if (typeof showProgress === 'function') {
+    showProgress(0, `Bắt đầu xử lý ${files.length} file ZIP xuất kho...`);
+  }
+
+  const processedTaxCodes = new Set();
+  let processedCount = 0;
+  const totalFiles = files.filter(f => f.name.toLowerCase().endsWith('.zip')).length;
+
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      window.showToast(`Bỏ qua file không phải .zip: ${file.name}`, 3000, 'info');
+      continue;
+    }
+
+    try {
+      if (typeof showProgress === 'function') {
+        const pct = Math.round((processedCount / totalFiles) * 80);
+        showProgress(pct, `📦 Đang giải nén: ${file.name} (${processedCount + 1}/${totalFiles})...`);
+      }
+
+      const invoice = await extractInvoiceFromZip(file);
+
+      if (!invoice || !invoice.sellerInfo || !invoice.products) {
+        window.showToast(`Không đọc được dữ liệu hóa đơn xuất: ${file.name}`, 3000, 'error');
+        processedCount++;
+        continue;
+      }
+
+      if (typeof showProgress === 'function') {
+        const pct = Math.round((processedCount / totalFiles) * 80) + 10;
+        showProgress(Math.min(pct, 85), `📄 Đang xử lý hóa đơn xuất: ${invoice.invoiceInfo?.number || file.name}...`);
+      }
+
+      // Dùng sellerInfo.taxCode thay vì buyerInfo.taxCode
+      const taxCode = invoice?.sellerInfo?.taxCode?.trim() || 'UNKNOWN';
+      const name = invoice?.sellerInfo?.name?.trim() || taxCode;
+      const mccqt = (invoice.invoiceInfo?.mccqt || '').toUpperCase();
+
+      ensureHkdData(taxCode);
+
+      if (!hkdData[taxCode].name || hkdData[taxCode].name === taxCode) {
+        hkdData[taxCode].name = name;
+      }
+
+      const exists = (hkdData[taxCode]?.invoices || []).some(
+        inv => (inv.invoiceInfo?.mccqt || '') === mccqt
+      );
+      if (exists) {
+        window.showToast(`Bỏ qua MCCQT trùng: ${mccqt}`, 3000, 'info');
+        processedCount++;
+        continue;
+      }
+
+      hkdData[taxCode].invoices.push(invoice);
+
+      invoice.products.forEach(p => {
+        const entry = {
+          ...p,
+          lineDiscount: parseFloat(p.lineDiscount || 0),
+          invoiceDate: invoice.invoiceInfo?.date || '',
+          mccqt: invoice.invoiceInfo?.mccqt || '',
+          number: invoice.invoiceInfo?.number || '',
+          taxCode: taxCode
+        };
+        // Lưu vào xuatkhoMain/KM/CK thay vì tonkhoMain/KM/CK
+        const arr = entry.category === 'hang_hoa' ? 'xuatkhoMain' :
+                    entry.category === 'KM' ? 'xuatkhoKM' : 'xuatkhoCK';
+        hkdData[taxCode][arr].push(entry);
+      });
+
+      processedTaxCodes.add(taxCode);
+      processedCount++;
+
+      window.logAction(`Nhập xong hóa đơn xuất ${invoice.invoiceInfo.number} cho HKD ${taxCode}`, JSON.parse(JSON.stringify(hkdData)));
+
+    } catch (err) {
+      console.error(`Lỗi xử lý file xuất ${file.name}:`, err);
+      window.showToast(`File lỗi: ${file.name} - ${err.message}`, 3000, 'error');
+      processedCount++;
+      continue;
+    }
+  }
+
+  if (typeof showProgress === 'function') {
+    showProgress(90, '💾 Đang lưu dữ liệu...');
+  }
+
+  window.saveDataToLocalStorage();
+  window.renderHKDList();
+
+  if (hkdOrder.length > 0) {
+    const lastTaxCode = hkdOrder[hkdOrder.length - 1];
+    // Dùng keepTab='xuathang' để renderHKDTab giữ tab xuất hàng active
+    window.renderHKDTab(lastTaxCode, 'xuathang');
+  }
+
+  // Tự động gộp sản phẩm trùng sau khi import xuất kho
+  if (typeof autoMergeXuatKhoDuplicates === 'function') {
+    autoMergeXuatKhoDuplicates();
+  }
+
+  if (typeof showProgress === 'function') {
+    showProgress(100, '✅ Hoàn tất!');
+    setTimeout(() => { if (typeof hideProgress === 'function') hideProgress(); }, 1500);
+  }
+
+  window.showToast('Đã xử lý xong tất cả file xuất kho', 2000, 'success');
+}
+
+async function handleFiles() {
+  const input = document.getElementById("zipFile");
+  const files = Array.from(input.files);
+  if (files.length > 0) await handleFilesFromInput(files);
+}
 
 // Hàm đọc file Excel
 function readExcelFile(file) {
@@ -711,108 +322,7 @@ function readExcelFile(file) {
     reader.readAsArrayBuffer(file);
   });
 }
-function checkStockSync(taxCode) {
-  const hkd = hkdData[taxCode];
-  if (!hkd) return;
 
-  console.log('=== KIỂM TRA ĐỒNG BỘ TỒN KHO ===', taxCode);
-  
-  let totalStockQty = 0;
-  let totalStockValue = 0;
-  
-  hkd.tonkhoMain.forEach((stock, idx) => {
-    const calculatedAmount = parseFloat(stock.quantity) * parseFloat(stock.price);
-    const amountDiff = Math.abs(calculatedAmount - parseFloat(stock.amount));
-    
-    console.log(`${idx + 1}. ${stock.name}:`, {
-      quantity: stock.quantity,
-      price: stock.price,
-      amount: stock.amount,
-      calculatedAmount: calculatedAmount,
-      amountDiff: amountDiff
-    });
-    
-    totalStockQty += parseFloat(stock.quantity);
-    totalStockValue += parseFloat(stock.amount);
-  });
-
-  console.log('TỔNG KẾT TỒN KHO:', {
-    totalStockQty,
-    totalStockValue
-  });
-}
-function selectStockItem(taxCode, expIdx, originalIndex, stockIdx) {
-  const hkd = hkdData[taxCode];
-  if (!hkd || !hkd.tonkhoMain?.[stockIdx] || !hkd.exports?.[expIdx]) {
-    window.showToast('Dữ liệu không hợp lệ!', 2500, 'error');
-    return;
-  }
-
-  const stock = hkd.tonkhoMain[stockIdx];
-  const exp = hkd.exports[expIdx];
-  const item = exp.items[originalIndex];
-
-  // Kiểm tra tồn kho
-  const qtyAvail = parseFloat(stock.quantity) || 0;
-  if (qtyAvail <= 0) {
-    window.showToast(`Tồn kho "${stock.name}" đã hết!`, 2500, 'error');
-    return;
-  }
-
-  // Tính toán số lượng
-  const qtyNeed = parseFloat(item.qty) || 0;
-  if (qtyNeed <= 0) {
-    window.showToast(`Số lượng cần xuất = 0`, 2000, 'info');
-    return;
-  }
-
-  const actualQtyToDeduct = Math.min(qtyNeed, qtyAvail);
-
-  // CẬP NHẬT TỒN KHO
-  stock.quantity = (qtyAvail - actualQtyToDeduct).toFixed(6);
-  stock.amount = (parseFloat(stock.quantity) * parseFloat(stock.price)).toFixed(2);
-
-  console.log('CẬP NHẬT TỒN KHO THỦ CÔNG:', {
-    name: stock.name,
-    oldQty: qtyAvail,
-    newQty: stock.quantity,
-    deducted: actualQtyToDeduct
-  });
-
-  // Cập nhật item xuất hàng
-  item.qty = (qtyNeed - actualQtyToDeduct).toFixed(6);
-  item.amount = (parseFloat(item.qty) * parseFloat(item.price)).toFixed(2);
-  item.priceInput = parseFloat(stock.price);
-  item.manualMatched = true;
-
-  // Ghi lịch sử
-  if (!item.matchedHistory) item.matchedHistory = [];
-  item.matchedHistory.push({
-    stockIdx,
-    qty: actualQtyToDeduct,
-    priceInput: parseFloat(stock.price),
-    timestamp: new Date().toISOString(),
-    manual: true
-  });
-
-  // Cập nhật tổng tiền
-  exp.total = exp.items.reduce((sum, it) => sum + parseFloat(it.amount || 0), 0).toFixed(2);
-
-  // Thông báo
-  const remaining = parseFloat(item.qty);
-  if (remaining <= 0) {
-    window.showToast(`✅ Đã xuất hết "${item.name}"!`, 2200, 'success');
-  } else {
-    window.showToast(`Đã trừ ${actualQtyToDeduct}. Còn ${remaining}`, 3000, 'warning');
-  }
-
-  // CẬP NHẬT GIAO DIỆN CẢ HAI TAB
-  closeStockSelector();
-  renderExportInvoiceTable(taxCode);
-  window.renderTonKhoTab(taxCode, 'main'); // QUAN TRỌNG: cập nhật tab tồn kho
-  updateMainTotalDisplay(taxCode);
-  window.saveDataToLocalStorage();
-}
 function mergeDuplicateItems(items) {
   const mergedMap = new Map();
 
@@ -928,382 +438,6 @@ function formatQuantity(value) {
   // Nếu có thập phân → làm tròn 4 chữ số, loại bỏ số 0 thừa
   return num.toFixed(4).replace(/\.?0+$/, '');
 }
-function renderExportInvoiceTable(taxCode) {
-  const hkd = hkdData[taxCode];
-  const placeholder = document.getElementById(`${taxCode}-exportTablePlaceholder`);
-  if (!placeholder) return;
-  
-  if (!hkd?.exports?.length) {
-    placeholder.innerHTML = '<p style="text-align:center; color:#999; padding:30px; font-size:1.1em;">Chưa có hóa đơn xuất.</p>';
-    return;
-  }
-
-  let html = `
-    <h3 style="margin:15px 0 10px; font-weight:bold; color:#1976d2;">Xuất Hàng - HKD ${taxCode}</h3>
-    <div style="margin: 20px 0; text-align: center;">
-      <button onclick="openMatchByDragPopup('${taxCode}')" 
-              style="padding: 12px 28px; font-size: 1.1em; background: #1976d2; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
-        Khớp Tồn Kho Bằng Kéo Thả
-      </button>
-    </div>`;
-
-  hkd.exports.forEach((exp, expIdx) => {
-    // === LẤY TIÊU ĐỀ TỪ TÊN FILE (nếu có) ===
-    let title = exp.invoiceInfo?.mccqt || 'N/A';
-    if (exp.source === 'excel' && exp.fileName) {
-      title = exp.fileName.replace(/\.[^.]+$/, ''); // Bỏ đuôi .xlsx, .xls
-    }
-
-    // === TÍNH TỔNG TIỀN GỐC (trước khi xuất) ===
-    const originalTotal = exp.items.reduce((sum, it) => {
-      const origQty = parseFloat(it.qty) + (it.matchedHistory || []).reduce((s, m) => s + parseFloat(m.qty || 0), 0);
-      return sum + (origQty * parseFloat(it.price || 0));
-    }, 0);
-
-    // === TÍNH TỔNG TIỀN CÒN LẠI (chưa xuất) ===
-    const remainingTotal = exp.items.reduce((sum, it) => {
-      const remQty = parseFloat(it.qty) || 0;
-      return sum + (remQty * parseFloat(it.price || 0));
-    }, 0);
-
-    const sourceBadge = exp.source === 'excel' 
-      ? `<span style="background:#28a745; color:white; padding:3px 7px; border-radius:4px; font-size:0.8em; margin-left:8px;">EXCEL</span>` 
-      : '';
-
-    const toggleId = `export-detail-${taxCode}-${expIdx}`;
-
-    html += `
-      <div style="border:1px solid #ddd; border-radius:8px; padding:12px; margin-bottom:15px; background:#fafafa;">
-        <!-- TIÊU ĐỀ + 2 SỐ TIỀN + NÚT MỞ RỘNG -->
-        <div style="display:flex; justify-content:space-between; align-items:center; font-weight:bold; color:#d32f2f; margin-bottom:8px;">
-          <div style="flex:1;">
-            <span>${title} ${sourceBadge}</span>
-          </div>
-          <div style="display:flex; gap:15px; font-size:0.95em; color:#1976d2; text-align:right;">
-            <div>
-              <div style="font-size:0.8em; color:#666;">Tổng bảng kê</div>
-              <div><strong>${window.formatCurrencyVN(originalTotal)}</strong></div>
-            </div>
-            <div>
-              <div style="font-size:0.8em; color:#666;">Còn lại</div>
-              <div><strong style="color:#d32f2f;">${window.formatCurrencyVN(remainingTotal)}</strong></div>
-            </div>
-          </div>
-          <button onclick="toggleExportDetail('${toggleId}')" 
-                  style="margin-left:10px; padding:4px 10px; font-size:0.8em; background:#eee; border:1px solid #ccc; border-radius:4px; cursor:pointer;">
-            Mở rộng
-          </button>
-        </div>
-
-        <!-- BẢNG CHI TIẾT (ẨN MẶC ĐỊNH) -->
-        <div id="${toggleId}" style="display:none; margin-top:10px;">
-          <table style="width:100%; background:#fff; font-size:0.9em; border-collapse:collapse; border:1px solid #eee;">
-            <thead style="background:#e3f2fd;">
-              <tr>
-                <th style="padding:8px; border:1px solid #ddd;">STT</th>
-                <th>Mã SP</th><th>Tên hàng</th><th>ĐVT</th><th>SL gốc</th><th>SL còn</th><th>Đơn giá</th><th>Thành tiền</th>
-                <th>Hành động</th>
-              </tr>
-            </thead>
-            <tbody>`;
-
-    const mergedItems = mergeDuplicateItems(exp.items);
-
-    mergedItems.forEach((item, displayIdx) => {
-      const originalIndex = item.originalIndex;
-      const remaining88Qty = parseFloat(item.qty) || 0;
-      const matchedQty = (item.matchedHistory || []).reduce((s, m) => s + parseFloat(m.qty || 0), 0);
-      const originalQty = remaining88Qty + matchedQty;
-
-      html += `
-        <tr style="${remaining88Qty <= 0 ? 'opacity:0.6;' : ''}">
-          <td>${displayIdx + 1}</td>
-          <td>${item.code || ''}</td>
-          <td>${item.name || ''}</td>
-          <td>${item.unit || ''}</td>
-          <td>${formatQuantity(originalQty)}</td>
-          <td style="color:#d32f2f;">${formatQuantity(remaining88Qty)}</td>
-          <td>${window.formatCurrencyVN(item.price)}</td>
-          <td>${window.formatCurrencyVN(remaining88Qty * item.price)}</td>
-          <td>
-            ${remaining88Qty > 0 ? 
-              `<button onclick="openStockSelector('${taxCode}', ${expIdx}, ${originalIndex})" 
-                       style="padding:4px 8px; font-size:0.8em;">Chọn TK</button>` 
-              : '<span style="color:#2e7d32;">Đã xuất</span>'
-            }
-          </td>
-        </tr>`;
-    });
-
-    html += `</tbody></table></div></div>`;
-  });
-
-  placeholder.innerHTML = html;
-}
-function toggleExportDetail(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const isHidden = el.style.display === 'none';
-  el.style.display = isHidden ? 'block' : 'none';
-
-  // Cập nhật nút
-  const btn = el.parentElement.querySelector('button[onclick*="toggleExportDetail"]');
-  if (btn) {
-    btn.textContent = isHidden ? 'Thu gọn' : 'Mở rộng';
-    btn.style.background = isHidden ? '#1976d2' : '#eee';
-    btn.style.color = isHidden ? 'white' : 'black';
-  }
-}
-
-function checkDuplicateItems(taxCode, exportRecord) {
-  console.log('=== KIỂM TRA ITEMS TRÙNG ===', taxCode);
-  
-  const itemCount = new Map();
-  
-  exportRecord.items.forEach((item, idx) => {
-    const key = item.name.trim().toLowerCase();
-    if (itemCount.has(key)) {
-      itemCount.set(key, itemCount.get(key) + 1);
-    } else {
-      itemCount.set(key, 1);
-    }
-  });
-
-  // Hiển thị items trùng
-  itemCount.forEach((count, name) => {
-    if (count > 1) {
-      console.log(`🚨 TRÙNG: ${name} - ${count} lần`);
-    }
-  });
-
-  return itemCount;
-}
-function phraseSimilarity(s1, s2) {
-  // === 1️⃣ Chuẩn hóa: bỏ dấu, bỏ ký tự đặc biệt, bỏ khoảng trắng ===
-  const normalize = (s) => removeVietnameseAccents(String(s || '').toLowerCase())
-    .replace(/[^a-z0-9]/g, '') // chỉ giữ chữ & số
-    .trim();
-
-  s1 = normalize(s1);
-  s2 = normalize(s2);
-
-  if (!s1 || !s2) return 0;
-  if (s1 === s2) return 1;
-
-  // === 2️⃣ So sánh độ trùng ký tự liền mạch ===
-  const len1 = s1.length;
-  const len2 = s2.length;
-  const minLen = Math.min(len1, len2);
-  const maxLen = Math.max(len1, len2);
-
-  let sameCount = 0;
-  for (let i = 0; i < minLen; i++) {
-    if (s1[i] === s2[i]) sameCount++;
-  }
-
-  // Tính tỉ lệ trùng (độ dài tương đối)
-  const nameRatio = sameCount / maxLen;
-
-  return Math.min(nameRatio, 1);
-}
-
-function substringSimilarity(s1, s2) {
-  s1 = removeVietnameseAccents(s1.toLowerCase());
-  s2 = removeVietnameseAccents(s2.toLowerCase());
-  if (!s1 || !s2) return 0;
-  if (s1 === s2) return 1;
-
-  let matches = 0;
-  let i = 0, j = 0;
-  while (i < s1.length && j < s2.length) {
-    if (s1[i] === s2[j]) {
-      matches++;
-      i++; j++;
-    } else {
-      i++;
-    }
-  }
-  return (2.0 * matches) / (s1.length + s2.length);
-}
-function autoMatchAndDeduct(taxCode, exportRecord) {
-  console.log('🔁 TỰ ĐỘNG KHỚP TỒN KHO (100% | 70% + ±10%)', taxCode);
-
-  const hkd = hkdData[taxCode];
-  if (!hkd || !hkd.tonkhoMain || !exportRecord?.items) return;
-
-  const stockList = hkd.tonkhoMain;
-  const exportItems = exportRecord.items;
-
-  const cleanPrice = (val) => parseFloat(String(val).replace(/[^\d.]/g, '')) || 0;
-  const normalizeName = (s) =>
-    removeVietnameseAccents(String(s || '').toLowerCase()).replace(/\s+/g, '');
-
-  exportItems.forEach((expItem) => {
-    const expName = expItem.name?.trim();
-    const expQty = parseFloat(expItem.qty) || 0;
-    const expPrice = cleanPrice(expItem.priceInput || expItem.price);
-    if (!expName || expQty <= 0 || expPrice <= 0) return;
-
-    const normExp = normalizeName(expName);
-    let matched = false;
-
-    for (let sIdx = 0; sIdx < stockList.length; sIdx++) {
-      const stock = stockList[sIdx];
-      const stockQty = parseFloat(stock.quantity) || 0;
-      const stockPrice = cleanPrice(stock.price);
-      if (stockQty <= 0 || stockPrice <= 0) continue;
-
-      const normStock = normalizeName(stock.name);
-
-      // ==== 1️⃣ TRÙNG 100% ====
-      const isExact = normExp === normStock;
-
-      // ==== 2️⃣ TRÙNG 70% TÊN + ±10% GIÁ ====
-      const minLen = Math.min(normExp.length, normStock.length);
-      let sameCount = 0;
-      for (let i = 0; i < minLen; i++) {
-        if (normExp[i] === normStock[i]) sameCount++;
-      }
-      const nameRatio = sameCount / Math.max(normExp.length, normStock.length);
-      const priceDiff = Math.abs(expPrice - stockPrice) / stockPrice;
-
-      const isFuzzy = nameRatio >= 0.7 && priceDiff <= 0.10;
-
-      // ==== 3️⃣ ĐIỀU KIỆN KHỚP ====
-      if (!(isExact || isFuzzy)) continue;
-
-      const deductQty = Math.min(expQty, stockQty);
-      if (deductQty <= 0) continue;
-
-      const oldQty = stockQty;
-      stock.quantity = (stockQty - deductQty).toFixed(6);
-      stock.amount = parseFloat((parseFloat(stock.quantity) * stockPrice).toFixed(2));
-
-      if (!expItem.matchedHistory) expItem.matchedHistory = [];
-      expItem.matchedHistory.push({
-        stockIdx: sIdx,
-        qty: deductQty,
-        priceInput: stockPrice,  // ✅ THÊM DÒNG NÀY - QUAN TRỌNG!
-        timestamp: new Date().toISOString(),
-        matchType: isExact ? 'EXACT_100%' : 'FUZZY_70%',
-        nameRatio: nameRatio.toFixed(3),
-        priceDiff: priceDiff.toFixed(3),
-      });
-
-      console.log('✅ GỘP TỒN:', {
-        'Tên xuất': expName,
-        'Tên tồn': stock.name,
-        'Loại khớp': isExact ? 'TRÙNG 100%' : 'FUZZY ≥70% ±10%',
-        'Độ trùng tên': (nameRatio * 100).toFixed(1) + '%',
-        'Chênh giá': (priceDiff * 100).toFixed(2) + '%',
-        'Giá tồn kho': window.formatCurrencyVN(stockPrice),  // ✅ THÊM DÒNG NÀY
-        'Số lượng trừ': deductQty,
-        'Tồn cũ': oldQty,
-        'Tồn mới': stock.quantity,
-      });
-
-      expItem.qty = (expQty - deductQty).toFixed(6);
-      matched = true;
-      if (parseFloat(expItem.qty) <= 0) break;
-    }
-  });
-
-  setTimeout(() => {
-    window.renderTonKhoTab(taxCode, 'main');
-    updateMainTotalDisplay(taxCode);
-    window.saveDataToLocalStorage();
-  }, 50);
-}
-
-
-// Hàm xử lý file ZIP hóa đơn đầu ra (xuất hàng) - LƯU THEO HKD
-async function handleOutputFiles(files) {
-  for (const file of files) {
-    if (!file.name.toLowerCase().endsWith('.zip')) {
-      window.showToast(`Bỏ qua file không phải .zip: ${file.name}`, 3000, 'info');
-      continue;
-    }
-
-    try {
-      const invoice = await extractInvoiceFromZip(file);
-
-      if (!invoice || !invoice.sellerInfo || !invoice.products) {
-        window.showToast(`Không đọc được dữ liệu hóa đơn đầu ra: ${file.name}`, 3000, 'error');
-        continue;
-      }
-
-      // LẤY MST NGƯỜI BÁN → LÀM HKD
-      const taxCode = invoice.sellerInfo.taxCode?.trim() || 'UNKNOWN';
-      const name = invoice.sellerInfo.name?.trim() || taxCode;
-      const mccqt = (invoice.invoiceInfo?.mccqt || '').toUpperCase();
-
-      // Đảm bảo HKD tồn tại và KHÔNG xóa dữ liệu cũ
-      ensureHkdData(taxCode);
-      
-      // Cập nhật tên nếu chưa có
-      if (!hkdData[taxCode].name || hkdData[taxCode].name === taxCode) {
-        hkdData[taxCode].name = name;
-      }
-
-      // Kiểm tra trùng MCCQT (chỉ trong exports của HKD này)
-      const exists = (hkdData[taxCode]?.exports || []).some(e => e.invoiceInfo?.mccqt === mccqt);
-      if (exists) {
-        window.showToast(`Bỏ qua MCCQT trùng: ${mccqt}`, 3000, 'info');
-        continue;
-      }
-
-      // Tạo bản ghi xuất - THÊM vào exports của HKD
-      const exportRecord = {
-        ...invoice,
-        type: 'export',
-        exportDate: invoice.invoiceInfo?.date || new Date().toISOString().split('T')[0],
-        items: invoice.products.map(p => ({
-          code: p.code || '',
-          name: p.name || '',
-          unit: p.unit || '',
-          qty: parseFloat(p.quantity) || 0,
-          price: parseFloat(p.price) || 0,
-          amount: parseFloat(p.amount) || 0,
-          taxRate: p.taxRate || 0,
-          priceInput: 0,
-          category: p.category || 'hang_hoa',
-          matched: false,
-          manualMatched: false,
-          taxCode: taxCode // Lưu HKD
-        })),
-        total: invoice.totals?.afterTax || 0,
-        customer: invoice.buyerInfo || {},
-        taxCode: taxCode // Quan trọng: lưu HKD
-      };
-
-      // THÊM vào exports của HKD
-      hkdData[taxCode].exports.push(exportRecord);
-
-      // TỰ ĐỘNG KHỚP + GIẢM TỒN KHO CỦA HKD NÀY
-      autoMatchAndDeduct(taxCode, exportRecord);
-
-      window.logAction(`Nhập xong hóa đơn xuất ${mccqt} cho HKD ${taxCode}`, JSON.parse(JSON.stringify(hkdData)));
-
-    } catch (err) {
-      console.error(`Lỗi xử lý file xuất: ${file.name}`, err);
-      window.showToast(`File lỗi: ${file.name}`, 3000, 'error');
-    }
-  }
-
-  window.saveDataToLocalStorage();
-  window.renderHKDList();
-
-  if (hkdOrder.length > 0) {
-    const lastTaxCode = hkdOrder[hkdOrder.length - 1];
-    window.renderHKDTab(lastTaxCode);
-    setTimeout(() => {
-      const tab = document.querySelector(`[onclick*="${lastTaxCode}-xuathang"]`);
-      if (tab) tab.click();
-    }, 100);
-  }
-
-  window.showToast('Đã xử lý xong tất cả file hóa đơn xuất hàng', 2000, 'success');
-}
 
 async function extractInvoiceFromZip(zipFile) {
   const zip = await JSZip.loadAsync(zipFile);
@@ -1328,50 +462,21 @@ async function extractInvoiceFromZip(zipFile) {
 }
 
 // renderHKDList đã được chuyển sang hkd-list.js
-function debugExportStatistics(taxCode) {
-  const hkd = hkdData[taxCode];
-  if (!hkd) return;
+// Biến toàn cục lưu tab chính đang active ('tonkho', 'xuathang', 'tonkhothucte')
+let _activeMainTab = 'tonkho';
 
-  console.log('=== DEBUG THỐNG KÊ XUẤT HÀNG ===', taxCode);
-  
-  let totalMatchedQty = 0;
-  let totalOriginalQty = 0;
-  
-  (hkd.exports || []).forEach((exp, expIdx) => {
-    console.log(`Export ${expIdx + 1}:`);
-    (exp.items || []).forEach((item, itemIdx) => {
-      const matchedQty = (item.matchedHistory || []).reduce((s, m) => s + parseFloat(m.qty || 0), 0);
-      const originalQty = parseFloat(item.originalQty) || parseFloat(item.qty) || 0;
-      
-      totalMatchedQty += matchedQty;
-      totalOriginalQty += originalQty;
-      
-      console.log(`  ${itemIdx + 1}. ${item.name}:`, {
-        originalQty,
-        matchedQty,
-        remaining: originalQty - matchedQty,
-        matchedHistory: item.matchedHistory?.length || 0
-      });
-    });
-  });
-
-  console.log('TỔNG KẾT:', {
-    totalOriginalQty,
-    totalMatchedQty,
-    difference: totalOriginalQty - totalMatchedQty
-  });
-
-  // So sánh với tồn kho
-  const totalStockQty = (hkd.tonkhoMain || []).reduce((s, i) => s + parseFloat(i.quantity || 0), 0);
-  console.log('SO SÁNH TỒN KHO:', {
-    totalStockQty,
-    shouldBe: totalOriginalQty - totalMatchedQty
-  });
-}
-function renderHKDTab(taxCode) {
+function renderHKDTab(taxCode, keepTab = null) {
   currentTaxCode = taxCode;
   ensureHkdData(taxCode);
   const hkd = hkdData[taxCode];
+
+  // Xác định tab cần giữ
+  if (keepTab === 'tonkho' || keepTab === 'xuathang' || keepTab === 'tonkhothucte') {
+    _activeMainTab = keepTab;
+  }
+  // Nếu keepTab = null, giữ nguyên _activeMainTab hiện tại
+
+  const activeTabId = `${taxCode}-${_activeMainTab}`;
 
   // LẤY TÊN CÔNG TY
   const companyName = hkd.name || taxCode;
@@ -1404,308 +509,213 @@ const companyInfo = `
   const thueSauCK = tongThue * tyLe;
 
   /* ---------- 2. XUẤT HÀNG ---------- */
-  let totalExpQty = 0;
-  let totalExpValue = 0;
+  // Tính tổng xuất kho từ xuatkhoMain
+  const totalXuatQty = (hkd.xuatkhoMain || []).reduce((s, i) => s + parseFloat(i.quantity || 0), 0);
+  const totalXuatValue = (hkd.xuatkhoMain || []).reduce((s, i) => s + (parseFloat(i.quantity || 0) * parseFloat(i.price || 0)), 0);
+  const totalXuatUniqueProducts = (hkd.xuatkhoMain || []).filter(i => parseFloat(i.quantity) > 0).length;
 
-  (hkd.exports || []).forEach(exp => {
-    (exp.items || []).forEach(item => {
-      const matchedQty = (item.matchedHistory || []).reduce((s, m) => s + parseFloat(m.qty || 0), 0);
-      if (matchedQty > 0) {
-        totalExpQty += matchedQty;
-        totalExpValue += matchedQty * parseFloat(item.priceInput || item.price || 0);
-      }
-    });
-  });
+  // Tính tổng CK và Thuế từ xuatkhoMain + xuatkhoCK
+  const tongXuatHang = (hkd.xuatkhoMain || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const tongXuatCK = (hkd.xuatkhoCK || []).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const tongXuatSauCK = tongXuatHang - Math.abs(tongXuatCK);
+  const tongXuatThue = (hkd.xuatkhoMain || []).reduce((s, i) => {
+    const a = parseFloat(i.amount) || 0;
+    const t = parseFloat(i.taxRate) || 0;
+    return s + a * (t / 100);
+  }, 0);
+  const tyLeXuat = tongXuatHang > 0 ? tongXuatSauCK / tongXuatHang : 0;
+  const thueXuatSauCK = tongXuatThue * tyLeXuat;
+
+  // Xác định tab nào active dựa trên activeTabId
+  const isTonkhoActive = !activeTabId || activeTabId === `${taxCode}-tonkho`;
+  const isXuathangActive = activeTabId === `${taxCode}-xuathang`;
+  const isTonkhoThucTeActive = activeTabId === `${taxCode}-tonkhothucte`;
 
   /* ---------- 3. HTML KHUNG ---------- */
   const html = `
-    <!-- Tabs - GIỮ NGUYÊN NÚT CŨ -->
-    <div class="tabs">
-      <div class="tab active"   onclick="openTab(event,'${taxCode}-tonkho')">Tồn kho</div>
-      <div class="tab"          onclick="openTab(event,'${taxCode}-xuathang')">Xuất Hàng</div>
-    </div>
-
-    <!-- DÒNG TÊN CÔNG TY - THÊM MỚI -->
+    <!-- DÒNG TÊN CÔNG TY -->
     ${companyInfo}
 
-    <!-- TAB TỒN KHO -->
-    <div id="${taxCode}-tonkho" class="tab-content active hkd-section">
-      <div class="summary-grid" style="margin: 20px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
-        <div class="summary-box">
-          <div class="label">📦 Tổng SL tồn kho</div>
-          <div class="value" id="inv-qty" style="font-weight:bold; color:#1976d2;">${formatQuantity(totalInvQty)}</div>
+    <!-- TAB TỒN KHO (có sidebar bên trong) -->
+    <div id="${taxCode}-tonkho" class="tab-content ${isTonkhoActive ? 'active' : ''} hkd-section" style="${isTonkhoActive ? '' : 'display:none;'}">
+      <div class="tonkho-layout">
+        <!-- SIDEBAR HKD nằm trong tab Tồn kho -->
+        <div class="tonkho-sidebar" id="tonkhoSidebar">
+          <div class="tonkho-sidebar-header">
+            <h3>📋 Danh sách HKD</h3>
+            <div class="tonkho-sidebar-actions">
+              <button class="btn-file" onclick="document.getElementById('zipFile').click()" title="Chọn file ZIP hóa đơn">📁 Chọn file</button>
+              <input type="file" id="zipFile" accept=".zip" multiple style="display:none;" onchange="handleZipFileChange(event)">
+              <button class="btn-misa" onclick="document.getElementById('misaExcelFile').click()" title="Import Excel MISA để đồng bộ mã hàng">📥 Import MISA</button>
+              <input type="file" id="misaExcelFile" accept=".xlsx,.xls" style="display:none;" onchange="handleMisaFileChange(event)">
+            </div>
+          </div>
+          <ul id="businessList"></ul>
         </div>
-        <div class="summary-box">
-          <div class="label">📊 Số SP tồn kho</div>
-          <div class="value" id="inv-product-count" style="font-weight:bold; color:#6a1b9a;">${totalUniqueProducts}</div>
-        </div>
-        <div class="summary-box">
-          <div class="label">💰 Tiền tồn kho (thực tế)</div>
-          <div class="value" id="inv-value" style="color:#2e7d32; font-weight:bold;">${window.formatCurrencyVN(totalInvValue)}</div>
-        </div>
-        <div class="summary-box">
-          <div class="label">🔻 Tổng CK</div>
-          <div class="value" id="inv-total-ck" style="color:#d32f2f; font-weight:bold;">${Math.abs(tongCK).toLocaleString()} đ</div>
-        </div>
-        <div class="summary-box">
-          <div class="label">💸 Tổng Thuế</div>
-          <div class="value" id="inv-total-tax" style="color:#e65100; font-weight:bold;">${Math.round(thueSauCK).toLocaleString()} đ</div>
-        </div>
-      </div>
 
-      <div class="tonkho-tab-buttons" style="display:flex;gap:10px;justify-content:space-between;padding:10px;background:#f8f8f8;border-radius:8px;border:1px solid #ddd;">
-        <div style="display:flex;gap:10px;">
-          <button onclick="switchTonKhoTab('main')">Hàng hóa</button>
-          <button onclick="switchTonKhoTab('km')">Khuyến mại</button>
-          <button onclick="switchTonKhoTab('ck')">Chiết khấu</button>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button onclick="exportAllInventoryToExcel('${taxCode}')">Xuất Excel</button>
-          <button onclick="exportSuppliersExcel('${taxCode}')"
-                  style="background:#17a2b8;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
-            🏭 Danh mục NCC
-          </button>
-          <button onclick="exportMaterialsExcel('${taxCode}')"
-                  style="background:#6f42c1;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
-            📦 Danh mục VTHH
-          </button>
-          <button onclick="exportPurchaseExcel('${taxCode}')"
-                  style="background:#fd7e14;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
-            📄 Mua hàng trong nước
-          </button>
-          <button onclick="exportAllExcel('${taxCode}')"
-                  style="background:#dc3545;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;font-weight:bold;">
-            📤 Xuất tất cả (3 file)
-          </button>
-        </div>
-      </div>
+        <!-- NỘI DUNG TỒN KHO -->
+        <div class="tonkho-content">
+          <div class="summary-grid">
+            <div class="summary-box">
+              <div class="label">📦 Tổng SL tồn kho</div>
+              <div class="value" id="inv-qty" style="font-weight:bold; color:#1976d2;">${formatQuantity(totalInvQty)}</div>
+            </div>
+            <div class="summary-box">
+              <div class="label">📊 Số SP tồn kho</div>
+              <div class="value" id="inv-product-count" style="font-weight:bold; color:#6a1b9a;">${totalUniqueProducts}</div>
+            </div>
+            <div class="summary-box">
+              <div class="label">💰 Tiền tồn kho (thực tế)</div>
+              <div class="value" id="inv-value" style="color:#2e7d32; font-weight:bold;">${window.formatCurrencyVN(totalInvValue)}</div>
+            </div>
+            <div class="summary-box">
+              <div class="label">🔻 Tổng CK</div>
+              <div class="value" id="inv-total-ck" style="color:#d32f2f; font-weight:bold;">${Math.abs(tongCK).toLocaleString()} đ</div>
+            </div>
+            <div class="summary-box">
+              <div class="label">💸 Tổng Thuế</div>
+              <div class="value" id="inv-total-tax" style="color:#e65100; font-weight:bold;">${Math.round(thueSauCK).toLocaleString()} đ</div>
+            </div>
+          </div>
 
-      <div style="margin-top:20px">
-        <div id="tonKho-main"></div>
-        <div id="tonKho-km" style="display:none;"></div>
-        <div id="tonKho-ck" style="display:none;"></div>
+          <div class="tonkho-tab-buttons">
+            <div style="display:flex;gap:10px;">
+              <button onclick="switchTonKhoTab('main')">Hàng hóa</button>
+              <button onclick="switchTonKhoTab('km')">Khuyến mại</button>
+              <button onclick="switchTonKhoTab('ck')">Chiết khấu</button>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button onclick="exportAllInventoryToExcel('${taxCode}')">Xuất Excel</button>
+              <button onclick="exportSuppliersExcel('${taxCode}')"
+                      style="background:#17a2b8;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
+                🏭 Danh mục NCC
+              </button>
+              <button onclick="exportMaterialsExcel('${taxCode}')"
+                      style="background:#6f42c1;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
+                📦 Danh mục VTHH
+              </button>
+              <button onclick="exportPurchaseExcel('${taxCode}')"
+                      style="background:#fd7e14;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;">
+                📄 Mua hàng trong nước
+              </button>
+              <button onclick="exportAllExcel('${taxCode}')"
+                      style="background:#dc3545;color:white;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:0.85em;font-weight:bold;">
+                📤 Xuất tất cả (3 file)
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-top:20px">
+            <div id="tonKho-main"></div>
+            <div id="tonKho-km" style="display:none;"></div>
+            <div id="tonKho-ck" style="display:none;"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- TAB XUẤT HÀNG -->
-    <div id="${taxCode}-xuathang" class="tab-content" style="display:none;">
-      <div class="summary-grid" style="margin: 20px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
-        <div class="summary-box">
-          <div class="label">Tổng SL đã xuất</div>
-          <div class="value" id="exp-items" style="font-weight:bold; color:#1976d2;">${formatQuantity(totalExpQty)}</div>
+    <!-- TAB XUẤT HÀNG (giống hệt cấu trúc tồn kho - có sidebar + nút import) -->
+    <div id="${taxCode}-xuathang" class="tab-content ${isXuathangActive ? 'active' : ''}" style="${isXuathangActive ? '' : 'display:none;'}">
+      <div class="tonkho-layout">
+        <!-- SIDEBAR HKD (dùng chung id để mobile toggle hoạt động) -->
+        <div class="tonkho-sidebar" id="tonkhoSidebarXuat">
+          <div class="tonkho-sidebar-header">
+            <h3>📋 Danh sách HKD</h3>
+            <div class="tonkho-sidebar-actions">
+              <button class="btn-file" onclick="document.getElementById('xuatkhoZipFile').click()" title="Chọn file ZIP hóa đơn xuất kho">📁 Chọn file xuất</button>
+              <input type="file" id="xuatkhoZipFile" accept=".zip" multiple style="display:none;" onchange="handleXuatKhoFileChange(event)">
+            </div>
+          </div>
+          <ul id="businessListXuat"></ul>
         </div>
-        <div class="summary-box">
-          <div class="label">Doanh thu bán</div>
-          <div class="value" id="exp-revenue-sell" style="font-weight:bold; color:#2e7d32;">0 ₫</div>
-        </div>
-        <div class="summary-box">
-          <div class="label">Giá vốn đã xuất</div>
-          <div class="value" id="exp-revenue-cost" style="color:#d32f2f;">0 ₫</div>
+
+        <!-- NỘI DUNG XUẤT KHO -->
+        <div class="tonkho-content">
+          <!-- Summary grid cho xuất kho -->
+          <div class="summary-grid">
+            <div class="summary-box">
+              <div class="label">📦 Tổng SL xuất kho</div>
+              <div class="value" id="xuat-qty" style="font-weight:bold; color:#1976d2;">${formatQuantity(totalXuatQty)}</div>
+            </div>
+            <div class="summary-box">
+              <div class="label">📊 Số SP xuất kho</div>
+              <div class="value" id="xuat-product-count" style="font-weight:bold; color:#6a1b9a;">${totalXuatUniqueProducts}</div>
+            </div>
+            <div class="summary-box">
+              <div class="label">💰 Tiền xuất kho (thực tế)</div>
+              <div class="value" id="xuat-value" style="color:#2e7d32; font-weight:bold;">${window.formatCurrencyVN(totalXuatValue)}</div>
+            </div>
+            <div class="summary-box">
+              <div class="label">🔻 Tổng CK</div>
+              <div class="value" id="xuat-total-ck" style="color:#d32f2f; font-weight:bold;">${Math.abs(tongXuatCK).toLocaleString()} đ</div>
+            </div>
+            <div class="summary-box">
+              <div class="label">💸 Tổng Thuế</div>
+              <div class="value" id="xuat-total-tax" style="color:#e65100; font-weight:bold;">${Math.round(thueXuatSauCK).toLocaleString()} đ</div>
+            </div>
+          </div>
+
+          <!-- Nút chuyển tab xuất kho -->
+          <div style="margin:15px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <div style="display:flex;gap:10px;">
+              <button class="xuatkho-tab-btn active" data-tab="main" onclick="switchXuatKhoTab('main')">Hàng hóa</button>
+              <button class="xuatkho-tab-btn" data-tab="km" onclick="switchXuatKhoTab('km')">Khuyến mại</button>
+              <button class="xuatkho-tab-btn" data-tab="ck" onclick="switchXuatKhoTab('ck')">Chiết khấu</button>
+            </div>
+          </div>
+
+          <!-- Container cho xuất kho -->
+          <div style="margin-top:20px">
+            <div id="xuatKho-main"></div>
+            <div id="xuatKho-km" style="display:none;"></div>
+            <div id="xuatKho-ck" style="display:none;"></div>
+          </div>
         </div>
       </div>
+    </div>
 
-      <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-        <input type="file" id="excelExportFile-${taxCode}" accept=".xlsx,.xls" style="display: none;"
-               onchange="handleExcelExportFileUpload('${taxCode}', this.files[0])">
-        <button onclick="document.getElementById('excelExportFile-${taxCode}').click()"
-                style="background: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer;">
-          📥 Tải file Excel xuất hàng
-        </button>
-        <span style="margin-left: 10px; color: #666;">Định dạng: .xlsx, .xls</span>
+    <!-- TAB TỒN KHO THỰC TẾ -->
+    <div id="${taxCode}-tonkhothucte" class="tab-content ${isTonkhoThucTeActive ? 'active' : ''}" style="${isTonkhoThucTeActive ? '' : 'display:none;'}">
+      <div class="tonkho-layout">
+        <!-- SIDEBAR HKD (dùng chung) -->
+        <div class="tonkho-sidebar" id="tonkhoSidebarThucTe">
+          <div class="tonkho-sidebar-header">
+            <h3>📋 Danh sách HKD</h3>
+          </div>
+          <ul id="businessListThucTe"></ul>
+        </div>
+
+        <!-- NỘI DUNG TỒN KHO THỰC TẾ -->
+        <div class="tonkho-content">
+          <div id="tonkhoThucTeContent">
+            <p style="text-align:center;padding:20px;color:#999;">Đang tải dữ liệu...</p>
+          </div>
+        </div>
       </div>
-
-      <div id="${taxCode}-exportTablePlaceholder"></div>
     </div>
   `;
 
   document.getElementById('hkdInfo').innerHTML = html;
 
   /* ---------- 4. RENDER + CẬP NHẬT ---------- */
-  window.renderTonKhoTab(taxCode, 'main');
-  updateMainTotalDisplay(taxCode);
-}
-
-// Hàm xử lý upload file Excel xuất hàng - LƯU THEO HKD
-// Trong handleExcelExportFile - Gọi autoMatch ngay sau khi nhập
-async function handleExcelExportFile(file, taxCode) {
-  try {
-    const data = await readExcelFile(file);
-    if (!data || data.length === 0) {
-      throw new Error('File Excel không có dữ liệu');
+  if (isXuathangActive) {
+    // Nếu đang ở tab xuất hàng, render xuất kho
+    window.renderXuatKhoTab(taxCode, 'main');
+  } else if (isTonkhoThucTeActive) {
+    // Nếu đang ở tab tồn kho thực tế
+    if (typeof window.renderTonKhoThucTeTab === 'function') {
+      window.renderTonKhoThucTeTab(taxCode);
     }
-
-    ensureHkdData(taxCode);
-
-    const exportRecord = {
-      type: 'export',
-      exportDate: new Date().toISOString().split('T')[0],
-      invoiceInfo: { mccqt: `EXCEL_${Date.now()}` },
-      items: [],
-      total: 0,
-      customer: { name: 'Nhập từ Excel', taxCode: 'EXCEL_IMPORT' },
-      source: 'excel',
-      fileName: file.name,
-      taxCode: taxCode
-    };
-
-    let totalAmount = 0;
-    data.forEach((row, index) => {
-      const name = row['Mặt Hàng'] || row['Tên hàng'] || '';
-      const quantity = parseFloat(row['Số lượng'] || row['SL'] || 0);
-      const price = parseFloat(row['Đơn giá'] || row['Giá'] || 0);
-      const amount = quantity * price;
-
-      if (name && quantity > 0) {
-        const item = {
-          code: row['Mã hàng'] || `EXCEL_${index + 1}`,
-          name: name,
-          unit: row['ĐVT'] || row['Đơn vị tính'] || '',
-          qty: quantity,
-          price: price,
-          amount: amount,
-          matched: false,
-          manualMatched: false,
-          autoMatched: false
-        };
-
-        exportRecord.items.push(item);
-        totalAmount += amount;
-      }
-    });
-
-    exportRecord.total = totalAmount;
-
-    if (!hkdData[taxCode].exports) hkdData[taxCode].exports = [];
-    hkdData[taxCode].exports.push(exportRecord);
-
-    // TỰ ĐỘNG KHỚP NGAY SAU KHI NHẬP
-    autoMatchAndDeduct(taxCode, exportRecord);
-
-    window.saveDataToLocalStorage();
-    return exportRecord;
-
-  } catch (err) {
-    console.error('❌ Lỗi xử lý file Excel:', err);
-    throw err;
-  }
-}
-
-// Trong handleOutputFiles - Gọi autoMatch ngay sau khi nhập
-async function handleOutputFiles(files) {
-  for (const file of files) {
-    if (!file.name.toLowerCase().endsWith('.zip')) continue;
-
-    try {
-      const invoice = await extractInvoiceFromZip(file);
-      if (!invoice || !invoice.sellerInfo || !invoice.products) continue;
-
-      const taxCode = invoice.sellerInfo.taxCode?.trim() || 'UNKNOWN';
-      ensureHkdData(taxCode);
-
-      const exportRecord = {
-        ...invoice,
-        type: 'export',
-        exportDate: invoice.invoiceInfo?.date || new Date().toISOString().split('T')[0],
-        items: invoice.products.map(p => ({
-          code: p.code || '',
-          name: p.name || '',
-          unit: p.unit || '',
-          qty: parseFloat(p.quantity) || 0,
-          price: parseFloat(p.price) || 0,
-          amount: parseFloat(p.amount) || 0,
-          matched: false,
-          manualMatched: false,
-          autoMatched: false
-        })),
-        total: invoice.totals?.afterTax || 0,
-        customer: invoice.buyerInfo || {},
-        taxCode: taxCode
-      };
-
-      if (!hkdData[taxCode].exports) hkdData[taxCode].exports = [];
-      hkdData[taxCode].exports.push(exportRecord);
-
-      // TỰ ĐỘNG KHỚP NGAY SAU KHI NHẬP
-      autoMatchAndDeduct(taxCode, exportRecord);
-
-    } catch (err) {
-      console.error(`Lỗi xử lý file xuất: ${file.name}`, err);
-    }
+  } else {
+    // Mặc định render tồn kho
+    window.renderTonKhoTab(taxCode, 'main');
+    updateMainTotalDisplay(taxCode);
   }
 
-  window.saveDataToLocalStorage();
+  /* ---------- 5. RENDER LẠI DANH SÁCH HKD VÀO SIDEBAR ---------- */
   window.renderHKDList();
-  
-  if (hkdOrder.length > 0) {
-    const lastTaxCode = hkdOrder[hkdOrder.length - 1];
-    window.renderHKDTab(lastTaxCode);
-  }
 }
 
-// renderInvoiceDetail và copyRawXml đã được chuyển sang invoice-detail.js
-
-
-function validateStockBeforeSelection(taxCode, expIdx, originalIndex) {
-  const exp = hkdData[taxCode]?.exports?.[expIdx];
-  const item = exp?.items?.[originalIndex];
-  
-  if (!item) {
-    console.error('Không tìm thấy item');
-    return false;
-  }
-
-  const availableStock = hkdData[taxCode]?.tonkhoMain?.filter(stock => {
-    if (parseFloat(stock.quantity) <= 0) return false;
-    
-    const stockName = removeVietnameseAccents(stock.name.toLowerCase());
-    const itemName = removeVietnameseAccents(item.name.toLowerCase());
-    
-    const stockNameClean = stockName.replace(/[^\w\s]/g, '').trim();
-    const itemNameClean = itemName.replace(/[^\w\s]/g, '').trim();
-    
-    return stockNameClean === itemNameClean || 
-           stockNameClean.includes(itemNameClean) || 
-           itemNameClean.includes(stockNameClean);
-  });
-
-  console.log('KIỂM TRA TỒN KHO KHẢ DỤNG:', {
-    itemName: item.name,
-    availableStock: availableStock?.length || 0,
-    stockNames: availableStock?.map(s => s.name) || []
-  });
-
-  return availableStock && availableStock.length > 0;
-}
-function filterStockOptions(query) {
-  const q = removeVietnameseAccents(query.toLowerCase()).trim();
-  const container = document.getElementById('stockOptionsContainer');
-  const items = container.querySelectorAll('.stock-option-item');
-
-  let visibleCount = 0;
-  
-  items.forEach(item => {
-    const name = item.getAttribute('data-name');
-    const matches = !q || name.includes(q);
-    item.style.display = matches ? 'block' : 'none';
-    if (matches) visibleCount++;
-  });
-
-  // Hiển thị thông báo nếu không tìm thấy
-  let noResultsMsg = container.querySelector('.no-results-message');
-  if (visibleCount === 0 && q) {
-    if (!noResultsMsg) {
-      noResultsMsg = document.createElement('div');
-      noResultsMsg.className = 'no-results-message';
-      noResultsMsg.style.padding = '20px';
-      noResultsMsg.style.textAlign = 'center';
-      noResultsMsg.style.color = '#999';
-      noResultsMsg.innerHTML = `Không tìm thấy tồn kho nào với "<b>${query}</b>"`;
-      container.appendChild(noResultsMsg);
-    }
-  } else if (noResultsMsg) {
-    noResultsMsg.remove();
-  }
-}
 function openTab(evt, tabId) {
   document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
@@ -1717,8 +727,39 @@ function openTab(evt, tabId) {
 
   const taxCode = tabId.split('-')[0];
 
-  if (tabId.includes('tonkho'))   window.renderTonKhoTab(taxCode, 'main');
-  if (tabId.includes('xuathang')) renderExportInvoiceTable(taxCode);
+  // Cập nhật biến toàn cục _activeMainTab
+  if (tabId.includes('tonkhothucte')) {
+    _activeMainTab = 'tonkhothucte';
+    if (typeof window.renderTonKhoThucTeTab === 'function') {
+      window.renderTonKhoThucTeTab(taxCode);
+    }
+  } else if (tabId.includes('tonkho')) {
+    _activeMainTab = 'tonkho';
+    window.renderTonKhoTab(taxCode, 'main');
+  }
+  if (tabId.includes('xuathang')) {
+    _activeMainTab = 'xuathang';
+    window.renderXuatKhoTab(taxCode, 'main');
+  }
+}
+
+// Hàm chuyển tab chính từ header (được gọi từ index.html)
+function switchMainTabGlobal(tabName) {
+  if (!currentTaxCode) {
+    if (hkdOrder.length > 0) {
+      currentTaxCode = hkdOrder[0];
+    } else {
+      return;
+    }
+  }
+  // Cập nhật _activeMainTab
+  _activeMainTab = tabName;
+  // Cập nhật active class cho header buttons
+  document.querySelectorAll('.header-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  // Render lại tab với keepTab tương ứng
+  window.renderHKDTab(currentTaxCode, tabName);
 }
 
 async function initApp() {
@@ -1726,10 +767,7 @@ async function initApp() {
     document.body.classList.add('compact-mode');
   }
 
-  await window.loadDataFromLocalStorage();
-  window.renderHKDList();
-
-  // Đăng ký tất cả các hàm toàn cục
+  // Đăng ký tất cả các hàm toàn cục TRƯỚC khi gọi render
   window.handleFiles = handleFiles;
   window.renderHKDTab = renderHKDTab;
   window.renderTonKhoTab = renderTonKhoTab;
@@ -1739,33 +777,118 @@ async function initApp() {
   window.createTonKhoItem = createTonKhoItem;
   window.deleteTonKhoItem = deleteTonKhoItem;
   window.moveTonKhoItem = moveTonKhoItem;
-  window.openExportPopup = openExportPopup;
-  window.closeExportPopup = closeExportPopup;
-  window.downloadInventoryExcel = downloadInventoryExcel;
   window.clearAll = clearAll;
-  window.openMatchByDragPopup = openMatchByDragPopup;
   window.showLogHistory = showLogHistory;
   window.undoAction = undoAction;
   window.openTab = openTab;
   window.switchTonKhoTab = switchTonKhoTab;
-  window.toggleExportDetail = toggleExportDetail;
-  // Thêm các hàm mới - QUAN TRỌNG
-  window.handleExcelExportFileUpload = handleExcelExportFileUpload;
-  window.autoMatchAndDeduct = autoMatchAndDeduct; // THÊM DÒNG NÀY
-  window.openStockSelector = openStockSelector;
-  window.closeStockSelector = closeStockSelector;
-  window.validateCalculations = validateCalculations;
-  window.filterStockOptions = filterStockOptions;
-    window.deleteZeroStock = deleteZeroStock;
+  window.deleteZeroStock = deleteZeroStock;
   window.deleteStockItem = deleteStockItem;
-  window.selectStockItem = selectStockItem;
-  window.renderExportInvoiceTable = renderExportInvoiceTable;
   window.ensureHkdData = ensureHkdData;
   window.mergeDuplicateItems = mergeDuplicateItems;
+  window.handleZipFileChange = handleZipFileChange;
+  window.handleMisaFileChange = handleMisaFileChange;
+  window.handleFilesFromInput = handleFilesFromInput;
+  window.handleXuatKhoFileChange = handleXuatKhoFileChange;
+  window.renderXuatKhoTab = renderXuatKhoTab;
+  window.switchXuatKhoTab = switchXuatKhoTab;
+  window.startXuatEditProduct = startXuatEditProduct;
+  window.confirmXuatEditProduct = confirmXuatEditProduct;
+  window.cancelXuatEditProduct = cancelXuatEditProduct;
+  window.createXuatKhoItem = createXuatKhoItem;
+  window.deleteXuatKhoItem = deleteXuatKhoItem;
+  window.deleteXuatStockItem = deleteXuatStockItem;
+  window.moveXuatKhoItemPrompt = moveXuatKhoItemPrompt;
+  window.toggleXuatSelectAll = toggleXuatSelectAll;
+  window.updateXuatSelectedCount = updateXuatSelectedCount;
+  window.batchXuatDeleteItems = batchXuatDeleteItems;
+  window.batchXuatMoveItems = batchXuatMoveItems;
+  window.batchXuatMergeItems = batchXuatMergeItems;
+  window.autoMergeXuatKhoDuplicates = autoMergeXuatKhoDuplicates;
+  window.renderTonKhoThucTeTab = renderTonKhoThucTeTab;
+  window.calculateTonKhoThucTe = calculateTonKhoThucTe;
+  window.showTTComparePopup = showTTComparePopup;
+  window.showTTManualPopup = showTTManualPopup;
+  window.confirmTTMatch = confirmTTMatch;
+  window.rejectTTMatch = rejectTTMatch;
+  window.confirmTTManual = confirmTTManual;
+  window.selectTTManualItem = selectTTManualItem;
+  window.applyTTFilter = applyTTFilter;
+  window.resetTTFilter = resetTTFilter;
+  window.toggleTTSortDir = toggleTTSortDir;
+  window.debounceTTFilter = debounceTTFilter;
+  window.onTTDragStart = onTTDragStart;
+  window.onTTDragEnd = onTTDragEnd;
+  window.onTTDragOver = onTTDragOver;
+  window.onTTDrop = onTTDrop;
+  window.showQuickMatchPopup = showQuickMatchPopup;
+  window.quickMatchConfirm = quickMatchConfirm;
+  window.batchMatchSelected = batchMatchSelected;
+  window.toggleTTSelectAll = toggleTTSelectAll;
+  window.toggleTTSelectItem = toggleTTSelectItem;
+  window.escapeHtml = escapeHtml;
+  window.showTTMatchHistoryPopup = showTTMatchHistoryPopup;
+  window.showTTMatchDetailPopup = showTTMatchDetailPopup;
+  window.filterTTDetailItems = filterTTDetailItems;
+  window.selectTTDetailItem = selectTTDetailItem;
+  window.confirmTTDetail = confirmTTDetail;
+  window.showTTMatchDetailPopupReverse = showTTMatchDetailPopupReverse;
+  window.filterTTDetailItemsReverse = filterTTDetailItemsReverse;
+  window.selectTTDetailItemReverse = selectTTDetailItemReverse;
+  window.confirmTTDetailReverse = confirmTTDetailReverse;
+  window.loadManualMatchCacheReverse = loadManualMatchCacheReverse;
+  window.saveManualMatchCacheReverse = saveManualMatchCacheReverse;
+  window.getTonkhoItemKey = getTonkhoItemKey;
+  window.findTopSuggestionsReverse = findTopSuggestionsReverse;
+  window.quickEditXuatProductCode = quickEditXuatProductCode;
+  window.changeXuatKhoPage = changeXuatKhoPage;
+  window.toggleXuatKhoShowAll = toggleXuatKhoShowAll;
+  window.switchMainTabGlobal = switchMainTabGlobal;
+  window.showEmptyState = showEmptyState;
 
   if (typeof closeInvoicePopup !== 'undefined') {
     window.closeInvoicePopup = closeInvoicePopup;
   }
+
+  await window.loadDataFromLocalStorage();
+
+  // Nếu có dữ liệu HKD, render tab đầu tiên để tạo sidebar trước
+  if (hkdOrder.length > 0) {
+    window.renderHKDTab(hkdOrder[0]);
+    window.renderHKDList();
+  } else {
+    // Hiển thị giao diện mặc định với nút import
+    showEmptyState();
+  }
+}
+
+function showEmptyState() {
+  const hkdInfo = document.getElementById('hkdInfo');
+  if (!hkdInfo) return;
+  hkdInfo.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:40px;">
+      <div style="font-size:4em;margin-bottom:20px;">📂</div>
+      <h2 style="color:var(--text-primary,#1e293b);margin-bottom:12px;">Chưa có dữ liệu</h2>
+      <p style="color:var(--text-secondary,#64748b);margin-bottom:30px;max-width:400px;">
+        Vui lòng import file ZIP hóa đơn để bắt đầu. Hỗ trợ file ZIP chứa XML hóa đơn điện tử.
+      </p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;">
+        <button onclick="document.getElementById('zipFileOutput').click()"
+          style="padding:14px 28px;background:linear-gradient(135deg,#1976d2,#2196f3);color:#fff;border:none;border-radius:12px;font-size:1.1em;font-weight:600;cursor:pointer;box-shadow:0 4px 15px rgba(33,150,243,0.3);transition:all 0.25s ease;">
+          📁 Import tồn kho
+        </button>
+        <button onclick="document.getElementById('xuatkhoZipFileOutput').click()"
+          style="padding:14px 28px;background:linear-gradient(135deg,#e65100,#ff9800);color:#fff;border:none;border-radius:12px;font-size:1.1em;font-weight:600;cursor:pointer;box-shadow:0 4px 15px rgba(255,152,0,0.3);transition:all 0.25s ease;">
+          📤 Import xuất kho
+        </button>
+      </div>
+      <input type="file" id="zipFileOutput" accept=".zip" multiple style="display:none;" onchange="handleZipFileChange(event)">
+      <input type="file" id="xuatkhoZipFileOutput" accept=".zip" multiple style="display:none;" onchange="handleXuatKhoFileChange(event)">
+      <p style="color:var(--text-muted,#94a3b8);margin-top:24px;font-size:0.85em;">
+        Sau khi import, dữ liệu sẽ hiển thị tự động
+      </p>
+    </div>
+  `;
 }
 
 window.showPopup = function(html, title = '', onClose = null) {
@@ -1837,31 +960,7 @@ window.closePopup = function() {
   const wrapper = document.getElementById('invoicePopupWrapper');
   if (wrapper) wrapper.remove();
 };
-function closeStockSelector() {
-  const popup = document.getElementById('stockSelectorPopup');
-  if (popup) popup.remove();
-}
-// toggleInvoiceList đã được chuyển sang hkd-list.js
-// Hàm xử lý upload file Excel xuất hàng
-async function handleExcelExportFileUpload(taxCode, file) {
-  if (!file) return;
 
-  try {
-    window.showToast(`Đang xử lý file ${file.name}...`, 2000, 'info');
-    
-    // Gọi hàm xử lý file Excel
-    await handleExcelExportFile(file, taxCode);
-    
-    // Lưu dữ liệu và cập nhật giao diện
-    window.saveDataToLocalStorage();
-    renderExportInvoiceTable(taxCode);
-    window.showToast(`✅ Đã nhập file Excel xuất hàng thành công cho HKD ${taxCode}`, 2000, 'success');
-    
-  } catch (err) {
-    console.error('❌ Lỗi xử lý file Excel:', err);
-    window.showToast(`❌ Lỗi xử lý file Excel: ${err.message}`, 3000, 'error');
-  }
-}
 function updateMainTotalDisplay(taxCode) {
   const hkd = hkdData[taxCode];
   if (!hkd) return;
@@ -1891,26 +990,7 @@ function updateMainTotalDisplay(taxCode) {
   const tyLe = tongHang > 0 ? tongSauCK / tongHang : 0;
   const thueSauCK = tongThue * tyLe;
 
-  // === 4. XUẤT HÀNG ===
-  let totalExpQty = 0;
-  let totalSellValue = 0;
-  let totalCostValue = 0;
-
-  (hkd.exports || []).forEach(exp => {
-    (exp.items || []).forEach(item => {
-      const matchedQty = (item.matchedHistory || []).reduce((s, m) => s + parseFloat(m.qty || 0), 0);
-      if (matchedQty <= 0) return;
-
-      totalExpQty += matchedQty;
-      totalSellValue += matchedQty * parseFloat(item.price || 0);
-
-      (item.matchedHistory || []).forEach(m => {
-        totalCostValue += parseFloat(m.qty || 0) * parseFloat(m.priceInput || 0);
-      });
-    });
-  });
-
-  // === 5. CẬP NHẬT GIAO DIỆN ===
+  // === 4. CẬP NHẬT GIAO DIỆN ===
   if (currentTaxCode === taxCode) {
     const el = (id) => document.getElementById(id);
     if (el('inv-qty')) el('inv-qty').textContent = formatQuantity(currentQty);
@@ -1918,157 +998,7 @@ function updateMainTotalDisplay(taxCode) {
     if (el('inv-value')) el('inv-value').textContent = window.formatCurrencyVN(currentValue);
     if (el('inv-total-ck')) el('inv-total-ck').textContent = Math.abs(tongCK).toLocaleString() + ' đ';
     if (el('inv-total-tax')) el('inv-total-tax').textContent = Math.round(thueSauCK).toLocaleString() + ' đ';
-
-    if (el('exp-items')) el('exp-items').textContent = formatQuantity(totalExpQty);
-    if (el('exp-revenue-sell')) el('exp-revenue-sell').textContent = window.formatCurrencyVN(totalSellValue);
-    if (el('exp-revenue-cost')) el('exp-revenue-cost').textContent = window.formatCurrencyVN(totalCostValue);
   }
-}
-function validateCalculations(taxCode) {
-  console.log('=== KIỂM TRA TÍNH TOÁN ===', taxCode);
-  
-  const hkd = hkdData[taxCode];
-  if (!hkd) {
-    console.log('Không có dữ liệu HKD');
-    return;
-  }
-  
-  // Kiểm tra tồn kho
-  console.log('TỒN KHO:');
-  if (!hkd.tonkhoMain || hkd.tonkhoMain.length === 0) {
-    console.log('Không có tồn kho');
-  } else {
-    hkd.tonkhoMain.forEach((item, index) => {
-      const calculatedAmount = parseFloat(item.quantity) * parseFloat(item.price);
-      const amountDiff = Math.abs(calculatedAmount - parseFloat(item.amount));
-      console.log(`${index + 1}. ${item.name}: SL=${item.quantity}, Giá=${item.price}, TT=${item.amount}, TT tính=${calculatedAmount}, Sai số=${amountDiff}`);
-    });
-  }
-  
-  // Kiểm tra xuất hàng
-  console.log('XUẤT HÀNG:');
-  if (!hkd.exports || hkd.exports.length === 0) {
-    console.log('Không có xuất hàng');
-  } else {
-    hkd.exports.forEach((exp, expIdx) => {
-      console.log(`Export ${expIdx + 1}:`);
-      if (!exp.items || exp.items.length === 0) {
-        console.log('  Không có items');
-      } else {
-        exp.items.forEach((item, itemIdx) => {
-          const calculatedAmount = parseFloat(item.qty) * parseFloat(item.price);
-          const amountDiff = Math.abs(calculatedAmount - parseFloat(item.amount));
-          console.log(`  ${itemIdx + 1}. ${item.name}: SL=${item.qty}, Giá=${item.price}, TT=${item.amount}, TT tính=${calculatedAmount}, Sai số=${amountDiff}`);
-        });
-        
-        const calculatedTotal = exp.items.reduce((sum, it) => sum + parseFloat(it.amount || 0), 0);
-        const totalDiff = Math.abs(calculatedTotal - parseFloat(exp.total || 0));
-        console.log(`  Tổng: ${exp.total}, Tổng tính: ${calculatedTotal}, Sai số: ${totalDiff}`);
-      }
-    });
-  }
-  
-  console.log('=== KẾT THÚC KIỂM TRA ===');
-}
-// Hàm tính độ tương đồng mờ (fuzzy score) - 0 đến 1
-function fuzzyScore(s1, s2) {
-  s1 = removeVietnameseAccents(s1.toLowerCase());
-  s2 = removeVietnameseAccents(s2.toLowerCase());
-  if (!s1 || !s2) return 0;
-  if (s1 === s2) return 1;
-
-  let matches = 0;
-  let i = 0, j = 0;
-  while (i < s1.length && j < s2.length) {
-    if (s1[i] === s2[j]) {
-      matches++;
-      i++; j++;
-    } else {
-      i++;
-    }
-  }
-  return (2.0 * matches) / (s1.length + s2.length);
-}
-function openStockSelector(taxCode, expIdx, originalIndex) {
-  const stock = hkdData[taxCode]?.tonkhoMain || [];
-  if (!stock?.length) {
-    window.showToast('Không có hàng tồn kho!', 2000, 'error');
-    return;
-  }
-
-  const exp = hkdData[taxCode].exports[expIdx];
-  const item = exp.items[originalIndex];
-
-  let options = '';
-  let availableStockCount = 0;
-
-  // Hiển thị TOÀN BỘ tồn kho còn hàng
-  stock.forEach((s, i) => {
-    if (parseFloat(s.quantity) <= 0) return;
-    
-    availableStockCount++;
-    
-    options += `
-      <div onclick="selectStockItem('${taxCode}', ${expIdx}, ${originalIndex}, ${i})"
-           class="stock-option-item"
-           data-name="${removeVietnameseAccents(s.name.toLowerCase())}"
-           style="padding:12px; border-bottom:1px solid #eee; cursor:pointer; transition:0.2s;"
-           onmouseover="this.style.background='#f5f5f5'"
-           onmouseout="this.style.background='transparent'">
-        <div style="font-weight:600;">${s.name}</div>
-        <div style="font-size:0.9em; color:#555; margin-top:4px;">
-          Mã: <b>${s.productCode || 'N/A'}</b> | 
-          SL còn: <b>${parseFloat(s.quantity).toFixed(2)}</b> ${s.unit} | 
-          Giá: <b>${window.formatCurrencyVN(s.price)}</b>
-        </div>
-      </div>`;
-  });
-
-  const popup = document.createElement('div');
-  popup.id = 'stockSelectorPopup';
-  popup.style.cssText = `
-    position: fixed;
-    top: 10%;
-    left: 10%;
-    width: 80%;
-    height: 80%;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  `;
-
-  popup.innerHTML = `
-    <div style="background:#1976d2; color:white; padding:16px 20px; font-size:1.2em; font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
-      <div>Chọn hàng tồn kho cho: <i style="font-weight:normal;">${item.name}</i></div>
-      <button onclick="closeStockSelector()" style="background:none; border:none; color:white; font-size:1.5em; cursor:pointer;">×</button>
-    </div>
-
-    <div style="padding:16px; border-bottom:1px solid #eee;">
-      <input type="text" id="stockSearchInput" placeholder="Tìm nhanh theo tên, mã..." 
-             style="width:100%; padding:12px; font-size:1em; border:1px solid #ccc; border-radius:6px;"
-             onkeyup="filterStockOptions(this.value)">
-    </div>
-
-    <div id="stockOptionsContainer" style="flex:1; overflow-y:auto; padding:0 16px;">
-      <div style="padding:8px 0; color:#777; font-style:italic;">
-        ${availableStockCount > 0 ? `Có ${availableStockCount} tồn kho có hàng` : 'Không có hàng tồn kho.'}
-      </div>
-      ${options}
-    </div>
-
-    <div style="padding:16px; text-align:right; border-top:1px solid #eee; background:#f9f9f9;">
-      <button onclick="closeStockSelector()" style="padding:10px 20px; background:#ccc; color:black; border:none; border-radius:6px; cursor:pointer;">
-        Đóng
-      </button>
-    </div>
-  `;
-
-  document.body.appendChild(popup);
-  setTimeout(() => document.getElementById('stockSearchInput')?.focus(), 100);
 }
 
 // Các hàm gộp HKD (openMergePopup, executeMerge, mergeInventoryArray, drag-drop helpers) đã được chuyển sang merge-hkd.js

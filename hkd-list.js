@@ -11,10 +11,16 @@
  * - Sắp xếp hóa đơn lỗi lên trên
  */
 function renderHKDList() {
+  // Render vào sidebar tồn kho
   const ul = document.getElementById('businessList');
-  if (!ul) return;
+  // Render vào sidebar xuất kho
+  const ulXuat = document.getElementById('businessListXuat');
+  // Render vào sidebar tồn kho thực tế
+  const ulThucTe = document.getElementById('businessListThucTe');
 
-  ul.innerHTML = '';
+  if (ul) ul.innerHTML = '';
+  if (ulXuat) ulXuat.innerHTML = '';
+  if (ulThucTe) ulThucTe.innerHTML = '';
 
   hkdOrder.forEach(taxCode => {
     const hkd = hkdData[taxCode] || {};
@@ -48,19 +54,18 @@ function renderHKDList() {
         return a.date > b.date ? -1 : 1;
       });
 
-    const li = document.createElement('li');
-    li.classList.add('hkd-item');
+    // Tạo HTML cho một item HKD - dùng prefix để phân biệt sidebar
+    function createHKDItemHTML(sidebarPrefix) {
+      const idList = `invoiceList-${taxCode}-${sidebarPrefix}`;
 
-    const idList = `invoiceList-${taxCode}`;
+      // Hiển thị thống kê - tổng tất cả các loại tồn kho (main + km + ck)
+      const totalExports = exports.length;
+      const totalInventory = (hkd.tonkhoMain || []).length + (hkd.tonkhoKM || []).length + (hkd.tonkhoCK || []).length;
+      const totalInvoices = invoiceList.length;
+      const errorInvoices = invoiceList.filter(x => x.hasDiff).length;
 
-    // Hiển thị thống kê - tổng tất cả các loại tồn kho (main + km + ck)
-    const totalExports = exports.length;
-    const totalInventory = (hkd.tonkhoMain || []).length + (hkd.tonkhoKM || []).length + (hkd.tonkhoCK || []).length;
-    const totalInvoices = invoiceList.length;
-    const errorInvoices = invoiceList.filter(x => x.hasDiff).length;
-
-    li.innerHTML = `
-      <div onclick="window.renderHKDTab('${taxCode}')">
+      return `
+      <div onclick="window.renderHKDTab('${taxCode}','${sidebarPrefix === 'tonkho' ? 'tonkho' : sidebarPrefix === 'tonkhothucte' ? 'tonkhothucte' : 'xuathang'}')">
         <strong>${taxCode}</strong><br>
         <span>${name}</span><br>
         <small style="color: #666;">
@@ -69,7 +74,7 @@ function renderHKDList() {
         </small>
       </div>
       <div style="display:flex; gap:4px; margin-top:6px;">
-        <button onclick="toggleInvoiceList('${taxCode}')" style="flex:1; font-size:0.8em; padding:4px 6px;">📄 Hóa đơn</button>
+        <button onclick="toggleInvoiceList('${taxCode}','${sidebarPrefix}')" style="flex:1; font-size:0.8em; padding:4px 6px;">📄 Hóa đơn</button>
         <button onclick="openMergePopup('${taxCode}')" style="flex:1; font-size:0.8em; padding:4px 6px; background:#ff9800; color:white; border:none; border-radius:4px; cursor:pointer;">🔗 Gộp</button>
       </div>
       <ul id="${idList}" style="display:none; list-style:none; padding:4px 0 4px 8px; margin:4px 0 0 0;">
@@ -96,23 +101,44 @@ function renderHKDList() {
                 .join('')
             : `<li style="padding:6px 8px;color:#999;font-style:italic;">Chưa có hóa đơn</li>`
         }
-      </ul>
-    `;
+      </ul>`;
+    }
 
-    ul.appendChild(li);
+    // Thêm vào sidebar tồn kho (prefix = tonkho)
+    if (ul) {
+      const li = document.createElement('li');
+      li.classList.add('hkd-item');
+      li.innerHTML = createHKDItemHTML('tonkho');
+      ul.appendChild(li);
+    }
+
+    // Thêm vào sidebar xuất kho (prefix = xuathang)
+    if (ulXuat) {
+      const li = document.createElement('li');
+      li.classList.add('hkd-item');
+      li.innerHTML = createHKDItemHTML('xuathang');
+      ulXuat.appendChild(li);
+    }
+
+    // Thêm vào sidebar tồn kho thực tế (prefix = tonkhothucte)
+    if (ulThucTe) {
+      const li = document.createElement('li');
+      li.classList.add('hkd-item');
+      li.innerHTML = createHKDItemHTML('tonkhothucte');
+      ulThucTe.appendChild(li);
+    }
   });
 
-  if (hkdOrder.length > 0 && !currentTaxCode) {
-    currentTaxCode = hkdOrder[0];
-    window.renderHKDTab(currentTaxCode);
-  }
+  // KHÔNG tự động gọi renderHKDTab ở đây nữa vì initApp() đã gọi trước đó
 }
 
 /**
  * Bật/tắt hiển thị danh sách hóa đơn của một HKD
+ * @param {string} taxCode - Mã số thuế
+ * @param {string} sidebarPrefix - 'tonkho' hoặc 'xuathang' để phân biệt sidebar
  */
-function toggleInvoiceList(taxCode) {
-  const list = document.getElementById(`invoiceList-${taxCode}`);
+function toggleInvoiceList(taxCode, sidebarPrefix = 'tonkho') {
+  const list = document.getElementById(`invoiceList-${taxCode}-${sidebarPrefix}`);
   if (!list) return;
 
   const isHidden = list.style.display === 'none' || !list.style.display;
